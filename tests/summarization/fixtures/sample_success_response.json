@@ -1,0 +1,5 @@
+{
+  "summary": "This blog post explores modern data pipeline architectures using Apache Airflow. The author discusses best practices for DAG design, including the thin orchestrator pattern. Key takeaways include keeping business logic separate from DAGs and using idempotent operations.",
+  "tags": ["data engineering", "apache airflow", "data pipelines", "python", "etl"],
+  "difficulty": "intermediate"
+}

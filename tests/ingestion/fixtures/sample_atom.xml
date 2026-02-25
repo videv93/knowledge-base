@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Test Atom Blog</title>
+  <link href="https://atomblog.com"/>
+  <entry>
+    <title>Atom Post Title</title>
+    <link href="https://atomblog.com/post-1"/>
+    <content type="html">Full content of the Atom post.</content>
+    <author><name>John Smith</name></author>
+    <published>2026-02-24T10:00:00Z</published>
+  </entry>
+</feed>

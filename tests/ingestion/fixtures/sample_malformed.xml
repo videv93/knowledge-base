@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Malformed Blog</title>
+    <item>
+      <title>Valid Entry</title>
+      <link>https://malformed.com/post-1</link>
+      <description>This entry is valid.</description>
+    </item>
+    <item>
+      <title></title>
+      <link></link>
+    </item>
+    <!-- Intentionally unclosed tag for malformed XML -->
+    <item>
+      <title>Broken Entry

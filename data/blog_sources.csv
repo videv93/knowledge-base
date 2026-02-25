@@ -1,0 +1,212 @@
+name,rss_feed_url,blog_url,category,quality_rating
+UX Collective,https://uxdesign.cc/feed,https://uxdesign.cc,UX/UI Design,5
+Nielsen Norman Group,https://www.nngroup.com/articles/feed,https://www.nngroup.com/articles,UX/UI Design,5
+Smashing Magazine,https://www.smashingmagazine.com/feed,https://www.smashingmagazine.com,UX/UI Design,5
+UX Planet,https://uxplanet.org/feed,https://uxplanet.org,UX/UI Design,4
+Google Accessibility Blog,https://www.google.com/accessibility/blog/feed,https://www.google.com/accessibility/blog,UX/UI Design,5
+Designlab,https://designlab.com/blog/feed,https://designlab.com/blog,UX/UI Design,4
+UX Movement,https://uxmovement.com/feed,https://uxmovement.com,UX/UI Design,4
+UX Booth,https://www.uxbooth.com/feed,https://www.uxbooth.com,UX/UI Design,4
+Boxes and Arrows,https://boxesandarrows.com/feed,https://boxesandarrows.com,UX/UI Design,4
+The Team W,https://www.blog.theteamw.com/feed,https://www.blog.theteamw.com,UX/UI Design,4
+A List Apart,https://alistapart.com/articles/feed,https://alistapart.com,UX/UI Design,4
+UX Matters,https://www.uxmatters.com/feed,https://www.uxmatters.com,UX/UI Design,4
+Dribbble,https://dribbble.com/feed,https://dribbble.com,UX/UI Design,5
+Abduzeedo,https://abduzeedo.com/feed,https://abduzeedo.com,UX/UI Design,4
+Awwwards,https://www.awwwards.com/blog/feed,https://www.awwwards.com/blog,UX/UI Design,5
+UXPin,https://www.uxpin.com/studio/blog/feed,https://www.uxpin.com/studio/blog,UX/UI Design,4
+Creative Market Blog,https://creativemarket.com/blog/feed,https://creativemarket.com/blog,UX/UI Design,4
+Web Design Ledger,https://webdesignledger.com/feed,https://webdesignledger.com,UX/UI Design,4
+Codrops,https://tympanus.net/codrops/feed,https://tympanus.net/codrops,UX/UI Design,4
+Design Shack,https://designshack.net/feed,https://designshack.net,UX/UI Design,4
+HeyDesigner,https://heydesigner.com/feed,https://heydesigner.com,UX/UI Design,4
+Inside Design by InVision,https://www.invisionapp.com/inside-design/feed,https://www.invisionapp.com/inside-design,UX/UI Design,4
+UX Switch,https://www.uxswitch.com/thinking/feed,https://www.uxswitch.com/thinking,UX/UI Design,4
+UX Writing Hub,https://uxwritinghub.com/blog/feed,https://uxwritinghub.com/blog,UX/UI Design,4
+Stephanie Walter Design,https://stephaniewalter.design/blog/feed,https://stephaniewalter.design/blog,UX/UI Design,4
+Chameleon,https://www.trychameleon.com/blog/feed,https://www.trychameleon.com/blog,UX/UI Design,4
+Creative Boom,https://www.creativeboom.com/feed,https://www.creativeboom.com,UX/UI Design,4
+Adam Fard Studio,https://adamfard.com/blog/feed,https://adamfard.com/blog,UX/UI Design,4
+Onextrapixel,https://onextrapixel.com/feed,https://onextrapixel.com,UX/UI Design,4
+UsabilityGeek,https://usabilitygeek.com/feed,https://usabilitygeek.com,UX/UI Design,4
+It's Nice That,https://www.itsnicethat.com/feed,https://www.itsnicethat.com,UX/UI Design,4
+Justinmind Blog,https://www.justinmind.com/blog/feed/,https://www.justinmind.com/blog,UX/UI Design,4
+CreativeBloq,https://www.creativebloq.com/feed,https://www.creativebloq.com,UX/UI Design,4
+Envato Tuts+,https://code.tutsplus.com/feed,https://code.tutsplus.com,UX/UI Design,4
+Muzli,https://medium.muz.li/feed,https://medium.muz.li,UX/UI Design,4
+Sidebar.io,https://sidebar.io/feed,https://sidebar.io,UX/UI Design,4
+Layout by Flywheel,https://getflywheel.com/layout/feed,https://getflywheel.com/layout,UX/UI Design,4
+Service Design Magazine,https://medium.com/service-design-tools/feed,https://medium.com/service-design-tools,UX/UI Design,3
+Speckyboy,https://speckyboy.com/feed,https://speckyboy.com,UX/UI Design,4
+UX Design Weekly,https://uxdesignweekly.com/feed,https://uxdesignweekly.com,UX/UI Design,4
+UX Magazine,https://uxmag.com/feed,https://uxmag.com,UX/UI Design,4
+UIDesignz,https://uidesignz.com/blogs/feed,https://uidesignz.com/blogs,UX/UI Design,3
+Mockplus Blog,https://www.mockplus.com/blog/feed,https://www.mockplus.com/blog,UX/UI Design,4
+instantShift,https://www.instantshift.com/feed,https://www.instantshift.com,UX/UI Design,3
+Noupe,https://www.noupe.com/feed,https://www.noupe.com,UX/UI Design,3
+Frontend Masters,https://frontendmasters.com/blog/feed,https://frontendmasters.com/blog,Frontend Engineering,5
+React Blog,https://react.dev/blog/feed,https://react.dev/blog,Frontend Engineering,5
+Vue Blog,https://blog.vuejs.org/feed,https://blog.vuejs.org,Frontend Engineering,5
+Angular Blog,https://blog.angular.io/feed,https://blog.angular.io,Frontend Engineering,5
+CSS-Tricks,https://css-tricks.com/feed,https://css-tricks.com,Frontend Engineering,5
+Piccalilli,https://piccalil.li/feed.xml,https://piccalil.li,Frontend Engineering,4
+Web Vitals,https://web.dev/articles/vitals/feed,https://web.dev/articles/vitals,Frontend Engineering,5
+Addy Osmani,https://addyosmani.com/blog/feed,https://addyosmani.com/blog,Frontend Engineering,5
+Speed Curve,https://speedcurve.com/blog/feed,https://speedcurve.com/blog,Frontend Engineering,4
+A11y Project,https://www.a11yproject.com/feed,https://www.a11yproject.com,Frontend Engineering,4
+Kent C Dodds,https://kentcdodds.com/blog/feed,https://kentcdodds.com/blog,Frontend Engineering,5
+Web Components Blog,https://webcomponents.org/articles/feed,https://webcomponents.org,Frontend Engineering,4
+Webpack Blog,https://webpack.js.org/blog/feed,https://webpack.js.org/blog,Frontend Engineering,4
+Vite Blog,https://vitejs.dev/feed,https://vitejs.dev,Frontend Engineering,4
+EggHead,https://egghead.io/blog/feed,https://egghead.io/blog,Frontend Engineering,4
+Smashing Magazine Frontend,https://www.smashingmagazine.com/category/front-end/feed,https://www.smashingmagazine.com/category/front-end,Frontend Engineering,5
+TypeScript Blog,https://www.typescriptlang.org/blogs/feed,https://www.typescriptlang.org/blogs,Frontend Engineering,5
+freeCodeCamp,https://www.freecodecamp.org/news/rss,https://www.freecodecamp.org/news,Frontend Engineering,4
+Dev.to Frontend,https://dev.to/t/frontend/feed,https://dev.to/t/frontend,Frontend Engineering,4
+Web Development Today,https://www.webdevelopertoday.com/feed,https://www.webdevelopertoday.com,Frontend Engineering,3
+Storybook Blog,https://storybook.js.org/blog/rss,https://storybook.js.org/blog,Frontend Engineering,4
+Web Fundamentals,https://developers.google.com/web/fundamentals/feed,https://developers.google.com/web/fundamentals,Frontend Engineering,5
+Next.js Blog,https://nextjs.org/blog/feed,https://nextjs.org/blog,Frontend Engineering,5
+Mozilla Developer Blog,https://developer.mozilla.org/en-US/blog/rss.xml,https://developer.mozilla.org/en-US/blog,Frontend Engineering,5
+Go Blog,https://go.dev/blog/feed,https://go.dev/blog,Backend Engineering,5
+Rust Blog,https://blog.rust-lang.org/feed,https://blog.rust-lang.org,Backend Engineering,5
+Real Python,https://realpython.com/feed,https://realpython.com,Backend Engineering,5
+Full Stack Python,https://www.fullstackpython.com/feed,https://www.fullstackpython.com,Backend Engineering,4
+Baeldung,https://www.baeldung.com/articles/feed,https://www.baeldung.com,Backend Engineering,5
+InfoQ,https://www.infoq.com/feed,https://www.infoq.com,Backend Engineering,4
+Node.js Blog,https://nodejs.org/en/blog/feed,https://nodejs.org/en/blog,Backend Engineering,5
+JavaScript Daily,https://javascriptdaily.com/feed,https://javascriptdaily.com,Backend Engineering,4
+API Design Blog,https://swagger.io/blog/feed,https://swagger.io/blog,Backend Engineering,4
+PostgreSQL Blog,https://www.postgresql.org/about/news/feed,https://www.postgresql.org/about/news,Backend Engineering,5
+MongoDB Blog,https://www.mongodb.com/blog/feed,https://www.mongodb.com/blog,Backend Engineering,5
+Nginx Blog,https://www.nginx.com/blog/feed,https://www.nginx.com/blog,Backend Engineering,5
+Sam Newman Blog,https://samnewman.io/blog/feed.xml,https://samnewman.io/blog,Backend Engineering,4
+Django Project,https://www.djangoproject.com/news/feed,https://www.djangoproject.com/news,Backend Engineering,5
+Rails Official,https://weblog.rubyonrails.org/feed,https://weblog.rubyonrails.org,Backend Engineering,5
+System Design Primer,https://github.com/donnemartin/system-design-primer/feed,https://github.com/donnemartin/system-design-primer,Backend Engineering,5
+Luke Hoban GitHub,https://github.com/lukehoban/feed,https://github.com/lukehoban,Backend Engineering,4
+Hacker News,https://news.ycombinator.com/rss,https://news.ycombinator.com,Backend Engineering,4
+Dev.to Backend,https://dev.to/t/backend/feed,https://dev.to/t/backend,Backend Engineering,4
+Thoughtworks Tech Radar,https://www.thoughtworks.com/radar/feed,https://www.thoughtworks.com/radar,Backend Engineering,4
+Martin Fowler,https://martinfowler.com/feed,https://martinfowler.com,Backend Engineering,5
+HashiCorp Blog,https://www.hashicorp.com/blog/feed.xml,https://www.hashicorp.com/blog,Backend Engineering,4
+Databricks Blog,https://www.databricks.com/blog/feed.xml,https://www.databricks.com/blog,Data Engineering & Databases,5
+Apache Spark Project,https://spark.apache.org/feed,https://spark.apache.org,Data Engineering & Databases,5
+Confluent Blog,https://www.confluent.io/blog/rss.xml,https://www.confluent.io/blog,Data Engineering & Databases,5
+Apache Kafka Project,https://kafka.apache.org/feed,https://kafka.apache.org,Data Engineering & Databases,5
+Astronomer Blog,https://www.astronomer.io/blog/feed,https://www.astronomer.io/blog,Data Engineering & Databases,5
+Apache Airflow Project,https://airflow.apache.org/blog/feed,https://airflow.apache.org/blog,Data Engineering & Databases,5
+dbt Labs Blog,https://blog.getdbt.com/feed,https://blog.getdbt.com,Data Engineering & Databases,5
+Snowflake Blog,https://www.snowflake.com/blog/feed.xml,https://www.snowflake.com/blog,Data Engineering & Databases,5
+BigQuery Blog,https://cloud.google.com/blog/products/data-analytics/feed,https://cloud.google.com/blog/products/data-analytics,Data Engineering & Databases,5
+Talend Blog,https://www.talend.com/blog/feed,https://www.talend.com/blog,Data Engineering & Databases,4
+Redpanda Blog,https://redpanda.com/blog/rss.xml,https://redpanda.com/blog,Data Engineering & Databases,4
+Delta Lake Project,https://delta.io/rss.xml,https://delta.io,Data Engineering & Databases,4
+Estuary Blog,https://estuary.dev/blog/rss.xml,https://estuary.dev/blog,Data Engineering & Databases,4
+Great Expectations,https://greatexpectations.io/blog/feed,https://greatexpectations.io/blog,Data Engineering & Databases,4
+Mode Analytics,https://mode.com/blog/feed,https://mode.com/blog,Data Engineering & Databases,4
+Towards Data Science,https://towardsdatascience.com/feed,https://towardsdatascience.com,Data Engineering & Databases,4
+PostgreSQL Wiki,https://wiki.postgresql.org/feed,https://wiki.postgresql.org,Data Engineering & Databases,4
+MongoDB University,https://university.mongodb.com/feed,https://university.mongodb.com,Data Engineering & Databases,4
+Alation Blog,https://www.alation.com/blog/feed,https://www.alation.com/blog,Data Engineering & Databases,4
+ProjectPro,https://www.projectpro.io/blog/rss,https://www.projectpro.io/blog,Data Engineering & Databases,4
+ClyNT,https://clynt.com/blog/feed,https://clynt.com/blog,Data Engineering & Databases,3
+K21 Academy,https://k21academy.com/feed,https://k21academy.com,Data Engineering & Databases,3
+Docker Blog,https://www.docker.com/blog/feed,https://www.docker.com/blog,DevOps & Infrastructure,5
+Kubernetes Official,https://kubernetes.io/blog/feed,https://kubernetes.io/blog,DevOps & Infrastructure,5
+KubernetesByExample,https://kubernetesbyexample.com/feed,https://kubernetesbyexample.com,DevOps & Infrastructure,4
+HashiCorp Terraform,https://www.hashicorp.com/blog/terraform/feed,https://www.hashicorp.com/blog/terraform,DevOps & Infrastructure,5
+GitLab Blog,https://about.gitlab.com/blog/feed,https://about.gitlab.com/blog,DevOps & Infrastructure,5
+GitHub Blog,https://github.blog/feed,https://github.blog,DevOps & Infrastructure,5
+CircleCI Blog,https://circleci.com/blog/feed.xml,https://circleci.com/blog,DevOps & Infrastructure,4
+OpenShift Blog,https://www.redhat.com/en/blog/channel/openshift/feed,https://www.redhat.com/en/blog/channel/openshift,DevOps & Infrastructure,4
+Ansible Blog,https://www.ansible.com/blog/feed,https://www.ansible.com/blog,DevOps & Infrastructure,4
+Nginx Blog,https://www.nginx.com/blog/feed,https://www.nginx.com/blog,DevOps & Infrastructure,5
+AWS Architecture Blog,https://aws.amazon.com/blogs/architecture/feed,https://aws.amazon.com/blogs/architecture,DevOps & Infrastructure,5
+Google Cloud Blog,https://cloud.google.com/blog/feed,https://cloud.google.com/blog,DevOps & Infrastructure,5
+Azure Blog,https://azure.microsoft.com/en-us/blog/rss,https://azure.microsoft.com/en-us/blog,DevOps & Infrastructure,5
+Aqua Security,https://www.aquasec.com/cloud-native-security-news/feed,https://www.aquasec.com/cloud-native-security-news,DevOps & Infrastructure,4
+New Relic Blog,https://newrelic.com/blog/feed,https://newrelic.com/blog,DevOps & Infrastructure,5
+Pulumi Blog,https://www.pulumi.com/blog/rss.xml,https://www.pulumi.com/blog,DevOps & Infrastructure,4
+Linux Foundation Blog,https://www.linuxfoundation.org/blog/rss.xml,https://www.linuxfoundation.org/blog,DevOps & Infrastructure,4
+NPM Blog,https://blog.npmjs.org/feed,https://blog.npmjs.org,DevOps & Infrastructure,5
+DevOps.com,https://devops.com/feed/,https://devops.com,DevOps & Infrastructure,4
+InfoQ DevOps,https://www.infoq.com/feed,https://www.infoq.com,DevOps & Infrastructure,4
+AWS Blog,https://aws.amazon.com/blogs/database/feed,https://aws.amazon.com/blogs,Cloud Platforms,5
+AWS Architecture,https://aws.amazon.com/blogs/architecture/feed,https://aws.amazon.com/blogs/architecture,Cloud Platforms,5
+AWS Security Blog,https://aws.amazon.com/blogs/security/feed,https://aws.amazon.com/blogs/security,Cloud Platforms,5
+Google Cloud,https://cloud.google.com/blog/feed,https://cloud.google.com/blog,Cloud Platforms,5
+Microsoft Azure,https://azure.microsoft.com/en-us/blog/rss,https://azure.microsoft.com/en-us/blog,Cloud Platforms,5
+Cloud Native Computing Foundation,https://www.cncf.io/blog/feed,https://www.cncf.io/blog,Cloud Platforms,5
+AWS Lambda Blog,https://aws.amazon.com/blogs/compute/feed,https://aws.amazon.com/blogs/compute,Cloud Platforms,5
+Google Cloud Functions,https://cloud.google.com/blog/products/serverless/feed,https://cloud.google.com/blog/products/serverless,Cloud Platforms,4
+CNCF Blog,https://www.cncf.io/blog/feed,https://www.cncf.io/blog,Cloud Platforms,5
+RDS Blog,https://aws.amazon.com/blogs/database/feed,https://aws.amazon.com/blogs/database,Cloud Platforms,4
+CloudZero Blog,https://www.cloudzero.com/blog/feed,https://www.cloudzero.com/blog,Cloud Platforms,4
+Flexera Blog,https://www.flexera.com/blog/feed,https://www.flexera.com/blog,Cloud Platforms,4
+AWS Migration,https://aws.amazon.com/blogs/migration/feed,https://aws.amazon.com/blogs/migration,Cloud Platforms,4
+Linode Blog,https://www.linode.com/blog/feed,https://www.linode.com/blog,Cloud Platforms,4
+KubeCon Blog,https://www.cncf.io/blog/feed,https://www.cncf.io/blog,Cloud Platforms,4
+OWASP Blog,https://owasp.org/blog/feed,https://owasp.org/blog,Security & Privacy,5
+Snyk Blog,https://snyk.io/blog/feed,https://snyk.io/blog,Security & Privacy,5
+CrowdStrike Blog,https://www.crowdstrike.com/blog/feed,https://www.crowdstrike.com/blog,Security & Privacy,4
+Cloudflare Blog,https://blog.cloudflare.com/rss,https://blog.cloudflare.com,Security & Privacy,5
+Cloud Security Alliance,https://www.cisecurity.org/blog/feed,https://www.cisecurity.org/blog,Security & Privacy,4
+API Security Shenanigans,https://www.apisecurityshenanigans.com/feed,https://www.apisecurityshenanigans.com,Security & Privacy,4
+Scott Contorno,https://scottauerbach.wordpress.com/feed,https://scottauerbach.wordpress.com,Security & Privacy,3
+Electronic Frontier Foundation,https://www.eff.org/deeplinks/feed,https://www.eff.org/deeplinks,Security & Privacy,4
+Sonatype Blog,https://www.sonatype.com/blog/rss.xml,https://www.sonatype.com/blog,Security & Privacy,4
+Zscaler Blog,https://www.zscaler.com/blogs/feed,https://www.zscaler.com/blogs,Security & Privacy,4
+Imperva Blog,https://www.imperva.com/blog/feed,https://www.imperva.com/blog,Security & Privacy,4
+Auth0 Blog,https://auth0.com/blog/rss.xml,https://auth0.com/blog,Security & Privacy,4
+Snyk Research,https://snyk.io/research/feed,https://snyk.io/research,Security & Privacy,4
+Security Boulevard,https://securityboulevard.com/feed/,https://securityboulevard.com,Security & Privacy,4
+Cyber Defense Magazine,https://www.cyberdefensemagazine.com/feed,https://www.cyberdefensemagazine.com,Security & Privacy,4
+Papers with Code,https://paperswithcode.com/feed,https://paperswithcode.com,AI/ML & LLMs,5
+OpenAI Blog,https://openai.com/blog/rss.xml,https://openai.com/blog,AI/ML & LLMs,5
+Hugging Face Blog,https://huggingface.co/blog/feed.xml,https://huggingface.co/blog,AI/ML & LLMs,5
+DeepSeek Blog,https://www.deepseek.com/blog/feed,https://www.deepseek.com/blog,AI/ML & LLMs,5
+PyTorch Blog,https://pytorch.org/blog/feed,https://pytorch.org/blog,AI/ML & LLMs,5
+Stanford NLP,https://nlp.stanford.edu/rss,https://nlp.stanford.edu,AI/ML & LLMs,5
+DeepMind Blog,https://www.deepmind.com/blog/feed,https://www.deepmind.com/blog,AI/ML & LLMs,5
+Weights & Biases Blog,https://wandb.ai/site/articles/feed,https://wandb.ai/site/articles,AI/ML & LLMs,5
+MLflow Blog,https://mlflow.org/blog/rss.xml,https://mlflow.org,AI/ML & LLMs,4
+Feature Store Blog,https://www.featurestore.org/feed,https://www.featurestore.org,AI/ML & LLMs,4
+Kaggle Blog,https://www.kaggle.com/discussion/feed,https://www.kaggle.com/discussion,AI/ML & LLMs,4
+Anthropic Blog,https://www.anthropic.com/news/feed,https://www.anthropic.com/news,AI/ML & LLMs,5
+Pinecone Blog,https://www.pinecone.io/learn/feed,https://www.pinecone.io/learn,AI/ML & LLMs,4
+OpenAI Cookbook,https://github.com/openai/openai-cookbook/feed,https://github.com/openai/openai-cookbook,AI/ML & LLMs,5
+Nvidia Blog,https://blogs.nvidia.com/feed,https://blogs.nvidia.com,AI/ML & LLMs,5
+OpenCV Blog,https://opencv.org/blog/feed,https://opencv.org/blog,AI/ML & LLMs,4
+ArXiv Sanity,https://www.arxiv-sanity.com/feed,https://www.arxiv-sanity.com,AI/ML & LLMs,4
+Towards AI,https://towardsai.net/feed,https://towardsai.net,AI/ML & LLMs,4
+Grafana Blog,https://grafana.com/blog/feed,https://grafana.com/blog,Platform & SRE,5
+Datadog Blog,https://www.datadoghq.com/blog/rss.xml,https://www.datadoghq.com/blog,Platform & SRE,5
+Prometheus Blog,https://prometheus.io/blog/feed.xml,https://prometheus.io/blog,Platform & SRE,4
+Opsgenie Blog,https://www.atlassian.com/incident-management/feed,https://www.atlassian.com/incident-management,Platform & SRE,4
+Site Reliability Engineering,https://sre.google/books/feed,https://sre.google/books,Platform & SRE,5
+New Relic Blog,https://newrelic.com/blog/feed,https://newrelic.com/blog,Platform & SRE,5
+Logz.io Blog,https://logz.io/blog/feed,https://logz.io/blog,Platform & SRE,4
+Jaeger Project,https://www.jaegertracing.io/feed,https://www.jaegertracing.io,Platform & SRE,4
+PagerDuty Blog,https://www.pagerduty.com/blog/feed,https://www.pagerduty.com/blog,Platform & SRE,4
+CNCF Blog,https://www.cncf.io/blog/feed,https://www.cncf.io/blog,Platform & SRE,5
+EDB Blog,https://www.enterprisedb.com/blog/rss,https://www.enterprisedb.com/blog,Platform & SRE,4
+Cluster Blog,https://www.redisgreen.com/blog/feed,https://www.redisgreen.com/blog,Platform & SRE,4
+Kubecost Blog,https://www.kubecost.com/blog/feed,https://www.kubecost.com/blog,Platform & SRE,4
+The Pragmatic Engineer,https://blog.pragmaticengineer.com/feed,https://blog.pragmaticengineer.com,Platform & SRE,5
+Julia Evans Blog,https://jvns.ca/feed,https://jvns.ca,Platform & SRE,5
+Stratechery,https://stratechery.com/feed,https://stratechery.com,Product Management & Growth,5
+Product Hunt,https://www.producthunt.com/news/feed,https://www.producthunt.com/news,Product Management & Growth,5
+Amplitude Blog,https://amplitude.com/blog/feed,https://amplitude.com/blog,Product Management & Growth,5
+Mixpanel Blog,https://mixpanel.com/blog/feed,https://mixpanel.com/blog,Product Management & Growth,4
+Pricing Secrets,https://www.pricingsecrets.com/feed,https://www.pricingsecrets.com,Product Management & Growth,4
+Experiential Design,https://www.experientialdesign.com/feed,https://www.experientialdesign.com,Product Management & Growth,4
+Reforge Blog,https://www.reforge.com/blog/feed,https://www.reforge.com/blog,Product Management & Growth,4
+GrowthHackers,https://growthhackers.com/feed,https://growthhackers.com,Product Management & Growth,4
+CB Insights,https://www.cbinsights.com/research/feed,https://www.cbinsights.com/research,Product Management & Growth,5
+Y Combinator,https://www.ycombinator.com/blog/feed,https://www.ycombinator.com/blog,Product Management & Growth,5
+Gainsight Blog,https://www.gainsight.com/blog/feed,https://www.gainsight.com/blog,Product Management & Growth,4
+Apptimize Blog,https://www.apptimize.com/blog/feed,https://www.apptimize.com/blog,Product Management & Growth,4
+ConvertKit,https://convertkit.com/blog/feed,https://convertkit.com/blog,Product Management & Growth,4
+First Round Review,https://firstround.com/review/articles/feed,https://firstround.com/review,Product Management & Growth,5
+Lenny's Newsletter,https://www.lennysnewsletter.com/feed,https://www.lennysnewsletter.com,Product Management & Growth,5
