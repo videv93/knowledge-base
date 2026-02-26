@@ -1,14 +1,17 @@
 """Daily RSS ingestion DAG.
 
 Thin orchestrator that fetches active sources, runs the ingestion pipeline,
-and logs a run summary. All business logic lives in src/ingestion/ modules.
+summarizes new posts, runs dbt models, and logs a run summary.
+All business logic lives in src/ modules.
 """
 
 import json
 import logging
+import os
 from datetime import datetime
 
 from airflow import DAG
+from airflow.operators.bash import BashOperator
 from airflow.operators.python import PythonOperator
 
 from common import DEFAULT_ARGS, DEFAULT_TAGS
@@ -71,18 +74,33 @@ def _run_ingestion(**kwargs):
     return metrics
 
 
+def _summarize_posts(**kwargs):
+    """Summarize all unsummarized posts. Failures route to DLQ; never raises."""
+    from src.summarization.summary_processor import process_all_unsummarized
+
+    result = process_all_unsummarized()
+    return {
+        "total_found": result.total_found,
+        "succeeded": result.succeeded,
+        "failed": result.failed,
+        "skipped": result.skipped,
+    }
+
+
 def _log_run_summary(**kwargs):
     """Pull metrics from XCom and log the run summary."""
     ti = kwargs["ti"]
-    metrics = ti.xcom_pull(task_ids="run_ingestion")
-    if not metrics:
-        logger.warning("No ingestion metrics received from XCom")
-        return
-    logger.info(
-        "Daily ingestion complete: %s",
-        json.dumps(metrics, indent=2),
-    )
+    ingestion_metrics = ti.xcom_pull(task_ids="run_ingestion")
+    summarization_metrics = ti.xcom_pull(task_ids="summarize_posts")
+    summary = {
+        "ingestion": ingestion_metrics,
+        "summarization": summarization_metrics,
+    }
+    logger.info("Daily pipeline complete: %s", json.dumps(summary, indent=2))
 
+
+# Resolve dbt project path relative to the repo root
+_DBT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dbt")
 
 with DAG(
     dag_id="ingestion_daily",
@@ -91,8 +109,8 @@ with DAG(
     start_date=datetime(2026, 1, 1),
     catchup=True,
     max_active_runs=1,
-    tags=DEFAULT_TAGS + ["ingestion"],
-    description="Daily RSS feed ingestion pipeline",
+    tags=DEFAULT_TAGS + ["ingestion", "summarization", "dbt"],
+    description="Daily RSS feed ingestion, summarization, and dbt transformation pipeline",
 ) as dag:
 
     fetch_active_sources = PythonOperator(
@@ -105,9 +123,31 @@ with DAG(
         python_callable=_run_ingestion,
     )
 
+    summarize_posts = PythonOperator(
+        task_id="summarize_posts",
+        python_callable=_summarize_posts,
+    )
+
+    run_dbt_models = BashOperator(
+        task_id="run_dbt_models",
+        bash_command=f"dbt run --project-dir {_DBT_DIR} --profiles-dir {_DBT_DIR}",
+    )
+
+    test_dbt_models = BashOperator(
+        task_id="test_dbt_models",
+        bash_command=f"dbt test --project-dir {_DBT_DIR} --profiles-dir {_DBT_DIR}",
+    )
+
     log_run_summary = PythonOperator(
         task_id="log_run_summary",
         python_callable=_log_run_summary,
     )
 
-    fetch_active_sources >> run_ingestion >> log_run_summary
+    (
+        fetch_active_sources
+        >> run_ingestion
+        >> summarize_posts
+        >> run_dbt_models
+        >> test_dbt_models
+        >> log_run_summary
+    )

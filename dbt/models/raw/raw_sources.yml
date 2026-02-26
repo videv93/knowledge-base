@@ -1,0 +1,83 @@
+version: 2
+
+sources:
+  - name: raw
+    schema: public
+    tables:
+      - name: raw_blog_sources
+        description: "Curated blog source metadata for RSS feed ingestion"
+        columns:
+          - name: id
+            description: "Primary key"
+          - name: rss_feed_url
+            description: "RSS feed URL for the blog source"
+          - name: name
+            description: "Human-readable name of the blog source"
+          - name: category
+            description: "Curated category (e.g., Data Engineering, DevOps & SRE)"
+          - name: quality_rating
+            description: "Quality rating (1-5 scale)"
+          - name: status
+            description: "Source status: active or inactive"
+          - name: last_checked_at
+            description: "Timestamp of last successful RSS check"
+          - name: created_at
+            description: "Record creation timestamp"
+          - name: updated_at
+            description: "Record last update timestamp"
+
+      - name: raw_blog_posts
+        description: "Ingested blog post content with URL-based deduplication"
+        columns:
+          - name: id
+            description: "Primary key"
+          - name: source_id
+            description: "FK to raw_blog_sources"
+          - name: title
+            description: "Blog post title"
+          - name: body
+            description: "Blog post body/content"
+          - name: url
+            description: "Original blog post URL (unique)"
+          - name: publication_date
+            description: "Post publication timestamp"
+          - name: author_name
+            description: "Post author name"
+          - name: created_at
+            description: "Record creation timestamp"
+
+      - name: raw_ai_summaries
+        description: "AI-generated summaries, tags, and difficulty classifications"
+        columns:
+          - name: id
+            description: "Primary key"
+          - name: post_id
+            description: "FK to raw_blog_posts (unique)"
+          - name: summary_text
+            description: "AI-generated 3-5 sentence summary"
+          - name: tags
+            description: "JSONB array of extracted topic tags"
+          - name: difficulty_classification
+            description: "AI-classified difficulty level"
+          - name: raw_api_response
+            description: "Full Claude API response for debugging"
+          - name: created_at
+            description: "Record creation timestamp"
+
+      - name: dead_letter_posts
+        description: "Failed pipeline items queued for retry"
+        columns:
+          - name: id
+            description: "Primary key"
+          - name: post_reference
+            description: "Reference to the failed post"
+          - name: failure_stage
+            description: "Pipeline stage where failure occurred"
+          - name: failure_reason
+            description: "Error details"
+          - name: retry_count
+            description: "Number of retry attempts"
+          - name: created_at
+            description: "Failure timestamp"
+          - name: last_retry_at
+            description: "Last retry attempt timestamp"

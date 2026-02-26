@@ -45,6 +45,14 @@ class DeadLetterEntry:
 
 
 @dataclass
+class ProcessingResult:
+    total_found: int
+    succeeded: int
+    failed: int
+    skipped: int
+
+
+@dataclass
 class AiSummary:
     id: Optional[int]
     post_id: int

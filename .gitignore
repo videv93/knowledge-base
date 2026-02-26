@@ -31,6 +31,7 @@ airflow-webserver.pid
 dbt/target/
 dbt/dbt_packages/
 dbt/logs/
+dbt/.user.yml
 
 # Docker
 *.log

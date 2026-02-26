@@ -1,0 +1,115 @@
+version: 2
+
+models:
+  - name: mart_posts
+    description: "Enriched posts with AI summaries, author references, and source metadata for vault generation and newsletter"
+    columns:
+      - name: id
+        description: "Post primary key"
+        data_tests:
+          - unique
+          - not_null
+      - name: source_id
+        description: "FK to raw_blog_sources"
+        data_tests:
+          - not_null
+      - name: source_name
+        description: "Blog source name"
+      - name: category
+        description: "Blog source category"
+      - name: title
+        description: "Post title"
+        data_tests:
+          - not_null
+      - name: body
+        description: "Post body content for vault generation"
+      - name: url
+        description: "Original post URL"
+        data_tests:
+          - unique
+          - not_null
+      - name: author_name
+        description: "Post author name (may be 'Unknown')"
+        data_tests:
+          - not_null
+      - name: author_id
+        description: "FK to mart_authors (NULL for 'Unknown' authors)"
+        data_tests:
+          - relationships:
+              to: ref('mart_authors')
+              field: author_id
+              config:
+                where: "author_id is not null"
+      - name: publication_date
+        description: "Post publication date"
+      - name: post_slug
+        description: "Preview slug for querying (not canonical vault slug)"
+      - name: summary_text
+        description: "AI-generated summary (NULL if not yet summarized)"
+      - name: tags
+        description: "JSONB array of topic tags (NULL if not yet summarized)"
+      - name: difficulty_classification
+        description: "AI difficulty classification (NULL if not yet summarized)"
+      - name: is_low_quality
+        description: "Summary quality flag (NULL if not yet summarized)"
+      - name: created_at
+        description: "Record creation timestamp"
+
+  - name: mart_authors
+    description: "Author profiles with post counts, source distribution, and primary category"
+    columns:
+      - name: author_id
+        description: "Surrogate key: md5 of normalized author name"
+        data_tests:
+          - unique
+          - not_null
+      - name: author_name
+        description: "Normalized author name"
+        data_tests:
+          - unique
+          - not_null
+      - name: post_count
+        description: "Total posts by this author"
+        data_tests:
+          - not_null
+      - name: source_ids
+        description: "Array of distinct source IDs"
+      - name: first_seen_at
+        description: "Earliest publication date"
+      - name: last_seen_at
+        description: "Latest publication date"
+      - name: primary_category
+        description: "Category with most posts by this author"
+
+  - name: mart_sources
+    description: "Source health metrics with post aggregates"
+    columns:
+      - name: id
+        description: "Source primary key"
+        data_tests:
+          - unique
+          - not_null
+      - name: name
+        description: "Blog source name"
+        data_tests:
+          - not_null
+      - name: rss_feed_url
+        description: "RSS feed URL"
+      - name: category
+        description: "Curated category"
+      - name: quality_rating
+        description: "Quality rating (1-5)"
+      - name: status
+        description: "Source status (active/inactive)"
+      - name: last_checked_at
+        description: "Last successful RSS check timestamp"
+      - name: total_post_count
+        description: "Total ingested posts from this source"
+        data_tests:
+          - not_null
+      - name: latest_post_date
+        description: "Most recent post publication date"
+      - name: created_at
+        description: "Source creation timestamp"
+      - name: updated_at
+        description: "Source last update timestamp"

@@ -30,6 +30,7 @@ def _load_ingestion_daily():
         ("airflow", {"DAG": MagicMock()}),
         ("airflow.operators", {}),
         ("airflow.operators.python", {"PythonOperator": MagicMock()}),
+        ("airflow.operators.bash", {"BashOperator": MagicMock()}),
     ]:
         saved[mod_name] = sys.modules.get(mod_name)
         mock_mod = types.ModuleType(mod_name)
@@ -152,29 +153,35 @@ class TestLogRunSummary:
 
     def test_logs_metrics(self, caplog):
         mock_ti = MagicMock()
-        mock_ti.xcom_pull.return_value = {
-            "total_success": 10,
-            "total_duplicates": 3,
-            "total_failures": 1,
-            "sources_processed": 5,
-            "sources_failed": 0,
-        }
+        mock_ti.xcom_pull.side_effect = lambda task_ids: {
+            "run_ingestion": {
+                "total_success": 10,
+                "total_duplicates": 3,
+                "total_failures": 1,
+                "sources_processed": 5,
+                "sources_failed": 0,
+            },
+            "summarize_posts": {
+                "total_found": 10,
+                "succeeded": 8,
+                "failed": 1,
+                "skipped": 1,
+            },
+        }.get(task_ids)
 
         mod = _load_ingestion_daily()
 
         with caplog.at_level(logging.INFO):
             mod._log_run_summary(ti=mock_ti)
 
-        assert "Daily ingestion complete" in caplog.text
+        assert "Daily pipeline complete" in caplog.text
 
     def test_handles_none_metrics(self, caplog):
-        """XCom returns None when upstream task failed."""
+        """XCom returns None when upstream tasks failed."""
         mock_ti = MagicMock()
         mock_ti.xcom_pull.return_value = None
 
         mod = _load_ingestion_daily()
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.INFO):
             mod._log_run_summary(ti=mock_ti)
-
-        assert "No ingestion metrics" in caplog.text
