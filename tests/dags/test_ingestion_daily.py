@@ -198,18 +198,24 @@ class TestDagStructure:
             "summarize_posts",
             "run_dbt_models",
             "test_dbt_models",
+            "generate_vault_notes",
+            "validate_vault_notes",
+            "publish_vault",
             "log_run_summary",
         }
         assert set(self.operators.keys()) == expected
 
     def test_task_dependency_chain(self):
-        """Verify >> chain: fetch → ingest → summarize → dbt run → dbt test → log."""
+        """Verify >> chain: fetch → ingest → summarize → dbt run → dbt test → vault → log."""
         expected_chain = [
             ("fetch_active_sources", "run_ingestion"),
             ("run_ingestion", "summarize_posts"),
             ("summarize_posts", "run_dbt_models"),
             ("run_dbt_models", "test_dbt_models"),
-            ("test_dbt_models", "log_run_summary"),
+            ("test_dbt_models", "generate_vault_notes"),
+            ("generate_vault_notes", "validate_vault_notes"),
+            ("validate_vault_notes", "publish_vault"),
+            ("publish_vault", "log_run_summary"),
         ]
         assert self.rshift_calls == expected_chain
 
@@ -226,6 +232,7 @@ class TestDagStructure:
         assert "ingestion" in tags
         assert "summarization" in tags
         assert "dbt" in tags
+        assert "vault" in tags
 
     def test_summarize_posts_is_python_operator(self):
         task = self.operators["summarize_posts"]
@@ -252,6 +259,21 @@ class TestDagStructure:
         # Both should point to same dbt directory
         assert "dbt" in run_task.bash_command
         assert "dbt" in test_task.bash_command
+
+    def test_generate_vault_notes_is_python_operator(self):
+        task = self.operators["generate_vault_notes"]
+        assert task.python_callable is not None
+        assert task.python_callable.__name__ == "_generate_vault_notes"
+
+    def test_validate_vault_notes_is_python_operator(self):
+        task = self.operators["validate_vault_notes"]
+        assert task.python_callable is not None
+        assert task.python_callable.__name__ == "_validate_vault_notes"
+
+    def test_publish_vault_is_python_operator(self):
+        task = self.operators["publish_vault"]
+        assert task.python_callable is not None
+        assert task.python_callable.__name__ == "_publish_vault"
 
     def test_summarize_posts_calls_module_not_inline_logic(self):
         """The summarize callable must delegate to src/summarization module."""

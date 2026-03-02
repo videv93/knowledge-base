@@ -107,9 +107,7 @@ def generate_post_notes(posts: list[dict], output_dir: Path) -> list[Path]:
     return written
 
 
-def generate_source_notes(
-    sources: list[dict], posts_by_source: dict[int, list[dict]], output_dir: Path
-) -> list[Path]:
+def generate_source_notes(sources: list[dict], posts_by_source: dict[int, list[dict]], output_dir: Path) -> list[Path]:
     """Generate source notes into output_dir/sources/{slug}.md."""
     written = []
     for source in sources:
@@ -209,7 +207,7 @@ def fetch_all_sources() -> list[dict]:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, name, category, feed_url, status,
+                SELECT id, name, category, rss_feed_url, status,
                        last_checked_at, total_post_count, latest_post_date
                 FROM mart_sources
                 ORDER BY name

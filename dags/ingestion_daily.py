@@ -93,14 +93,91 @@ def _summarize_posts(**kwargs):
     }
 
 
+def _generate_vault_notes(**kwargs):
+    """Generate vault notes from mart tables into the vault's generated/ directory.
+
+    If VAULT_REPO_URL is set, clones/pulls the remote repo first.
+    If not set, generates notes locally to VAULT_LOCAL_PATH (default /tmp/vault-clone).
+    """
+    from pathlib import Path
+    from src.common.config import VAULT_REPO_URL, VAULT_REPO_SSH_KEY_PATH, VAULT_LOCAL_PATH
+    from src.vault.note_generator import generate_all
+
+    if VAULT_REPO_URL:
+        from src.vault.git_publisher import GitPublisher
+
+        publisher = GitPublisher(VAULT_REPO_URL, VAULT_REPO_SSH_KEY_PATH, VAULT_LOCAL_PATH)
+        publisher._clone_or_pull()
+    else:
+        logger.info("VAULT_REPO_URL not set — generating vault notes locally to %s", VAULT_LOCAL_PATH)
+
+    generated_dir = Path(VAULT_LOCAL_PATH) / "generated"
+    generated_dir.mkdir(parents=True, exist_ok=True)
+    stats = generate_all(generated_dir)
+    logger.info("Vault note generation complete: %s", stats)
+    return stats
+
+
+def _validate_vault_notes(**kwargs):
+    """Validate all generated vault notes."""
+    from pathlib import Path
+    from src.common.config import VAULT_LOCAL_PATH
+    from src.vault.note_validator import validate_all
+
+    generated_dir = Path(VAULT_LOCAL_PATH) / "generated"
+    summary = validate_all(generated_dir)
+
+    if summary.failed > 0:
+        logger.warning("Vault validation: %d/%d notes failed", summary.failed, summary.total)
+    else:
+        logger.info("Vault validation passed: %d notes OK", summary.total)
+
+    return {"total": summary.total, "passed": summary.passed, "failed": summary.failed}
+
+
+def _publish_vault(**kwargs):
+    """Commit and push vault changes via git. Skips if no changes detected."""
+    from datetime import date
+    from src.common.config import VAULT_REPO_URL, VAULT_REPO_SSH_KEY_PATH, VAULT_LOCAL_PATH
+
+    if not VAULT_REPO_URL:
+        logger.warning("VAULT_REPO_URL not set — skipping vault publish")
+        return {"pushed": False}
+
+    from src.vault.git_publisher import GitPublisher
+
+    ti = kwargs["ti"]
+    stats = ti.xcom_pull(task_ids="generate_vault_notes")
+
+    publisher = GitPublisher(VAULT_REPO_URL, VAULT_REPO_SSH_KEY_PATH, VAULT_LOCAL_PATH)
+
+    if not publisher._has_changes():
+        logger.info("No vault changes detected — skipping commit")
+        return {"pushed": False}
+
+    run_date = date.today().isoformat()
+    post_count = stats.get("posts_generated", 0) if stats else 0
+    source_count = stats.get("sources_generated", 0) if stats else 0
+
+    publisher.commit_and_push(run_date, post_count, source_count)
+    logger.info("Vault published: %s (%d posts, %d sources)", run_date, post_count, source_count)
+    return {"pushed": True, "run_date": run_date}
+
+
 def _log_run_summary(**kwargs):
     """Pull metrics from XCom and log the run summary."""
     ti = kwargs["ti"]
     ingestion_metrics = ti.xcom_pull(task_ids="run_ingestion")
     summarization_metrics = ti.xcom_pull(task_ids="summarize_posts")
+    vault_metrics = ti.xcom_pull(task_ids="generate_vault_notes")
+    validation_metrics = ti.xcom_pull(task_ids="validate_vault_notes")
+    publish_metrics = ti.xcom_pull(task_ids="publish_vault")
     summary = {
         "ingestion": ingestion_metrics,
         "summarization": summarization_metrics,
+        "vault_generation": vault_metrics,
+        "vault_validation": validation_metrics,
+        "vault_publish": publish_metrics,
     }
     logger.info("Daily pipeline complete: %s", json.dumps(summary, indent=2))
 
@@ -112,13 +189,12 @@ with DAG(
     dag_id="ingestion_daily",
     default_args=DEFAULT_ARGS,
     schedule="@daily",
-    start_date=datetime(2026, 1, 1),
-    catchup=True,
+    start_date=datetime(2026, 3, 1),
+    catchup=False,
     max_active_runs=1,
-    tags=DEFAULT_TAGS + ["ingestion", "summarization", "dbt"],
+    tags=DEFAULT_TAGS + ["ingestion", "summarization", "dbt", "vault"],
     description="Daily RSS feed ingestion, summarization, and dbt transformation pipeline",
 ) as dag:
-
     fetch_active_sources = PythonOperator(
         task_id="fetch_active_sources",
         python_callable=_fetch_active_sources,
@@ -144,6 +220,21 @@ with DAG(
         bash_command=f"dbt test --project-dir {_DBT_DIR} --profiles-dir {_DBT_DIR}",
     )
 
+    generate_vault_notes = PythonOperator(
+        task_id="generate_vault_notes",
+        python_callable=_generate_vault_notes,
+    )
+
+    validate_vault_notes = PythonOperator(
+        task_id="validate_vault_notes",
+        python_callable=_validate_vault_notes,
+    )
+
+    publish_vault = PythonOperator(
+        task_id="publish_vault",
+        python_callable=_publish_vault,
+    )
+
     log_run_summary = PythonOperator(
         task_id="log_run_summary",
         python_callable=_log_run_summary,
@@ -155,5 +246,8 @@ with DAG(
         >> summarize_posts
         >> run_dbt_models
         >> test_dbt_models
+        >> generate_vault_notes
+        >> validate_vault_notes
+        >> publish_vault
         >> log_run_summary
     )
