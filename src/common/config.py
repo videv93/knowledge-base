@@ -42,6 +42,7 @@ BEEHIIV_API_KEY = os.environ.get("BEEHIIV_API_KEY", "")
 BEEHIIV_PUBLICATION_ID = os.environ.get("BEEHIIV_PUBLICATION_ID", "")
 VAULT_REPO_URL = os.environ.get("VAULT_REPO_URL", "")
 VAULT_REPO_SSH_KEY_PATH = os.environ.get("VAULT_REPO_SSH_KEY_PATH", "")
+VAULT_LOCAL_PATH = os.environ.get("VAULT_LOCAL_PATH", "/tmp/vault-clone")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 try:
     CLAUDE_CONCURRENCY = int(os.environ.get("CLAUDE_CONCURRENCY", "4"))

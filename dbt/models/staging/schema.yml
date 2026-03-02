@@ -77,9 +77,8 @@ models:
           - unique
           - not_null
           - relationships:
-              arguments:
-                to: source('raw', 'raw_blog_posts')
-                field: id
+              to: source('raw', 'raw_blog_posts')
+              field: id
       - name: summary_text
         description: "AI-generated summary text"
         data_tests:

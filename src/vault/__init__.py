@@ -3,6 +3,7 @@
 Public interface for generating and validating Obsidian markdown notes.
 """
 
+from src.vault.git_publisher import GitPublisher
 from src.vault.note_generator import (
     generate_all,
     generate_author_notes,
@@ -33,4 +34,6 @@ __all__ = [
     "ValidationFailure",
     "ValidationResult",
     "ValidationSummary",
+    # publishing
+    "GitPublisher",
 ]

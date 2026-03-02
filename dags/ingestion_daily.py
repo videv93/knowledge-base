@@ -76,6 +76,12 @@ def _run_ingestion(**kwargs):
 
 def _summarize_posts(**kwargs):
     """Summarize all unsummarized posts. Failures route to DLQ; never raises."""
+    from src.common.config import CLAUDE_API_KEY
+
+    if not CLAUDE_API_KEY:
+        logger.warning("CLAUDE_API_KEY not set — skipping summarization")
+        return {"total_found": 0, "succeeded": 0, "failed": 0, "skipped": 0}
+
     from src.summarization.summary_processor import process_all_unsummarized
 
     result = process_all_unsummarized()
