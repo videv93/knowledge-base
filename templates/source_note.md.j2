@@ -1,0 +1,21 @@
+---
+name: {{ source.name }}
+category: {{ source.category }}
+rss_url: {{ source.feed_url }}
+total_post_count: {{ source.total_post_count }}
+status: {{ source.status }}
+---
+
+# {{ source.name }}
+
+## Source Info
+- Category: {{ source.category }}
+- RSS Feed: {{ source.feed_url }}
+- Total Posts: {{ source.total_post_count }}
+- Latest Post: {{ source.latest_post_date if source.latest_post_date else 'N/A' }}
+- Status: {{ source.status }}
+
+## Posts
+{% if posts %}{% for post in posts %}- [[{{ post.title }}]]
+{% endfor %}{% else %}_No posts from this source yet._
+{% endif %}

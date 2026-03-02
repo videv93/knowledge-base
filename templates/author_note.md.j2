@@ -1,0 +1,23 @@
+---
+name: {{ author.author_name }}
+primary_category: {{ author.primary_category if author.primary_category else 'Uncategorized' }}
+post_count: {{ author.post_count }}
+---
+
+# {{ author.author_name }}
+
+## Author Info
+- Primary Category: {{ author.primary_category if author.primary_category else 'Uncategorized' }}
+- Total Posts: {{ author.post_count }}
+- First Seen: {{ author.first_seen_at }}
+- Last Seen: {{ author.last_seen_at }}
+
+## Sources
+{% if sources %}{% for source in sources %}- [[{{ source.name }}]]
+{% endfor %}{% else %}_No sources linked._
+{% endif %}
+
+## Posts
+{% if posts %}{% for post in posts %}- [[{{ post.title }}]]
+{% endfor %}{% else %}_No posts by this author yet._
+{% endif %}

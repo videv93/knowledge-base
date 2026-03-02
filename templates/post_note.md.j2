@@ -1,0 +1,25 @@
+---
+uid: {{ post.id }}
+source: "[[{{ post.source_name }}]]"
+author: "[[{{ post.author_name if post.author_name else 'Unknown' }}]]"
+date: {{ post.publication_date }}
+tags: [{{ post.tags | join(', ') if post.tags else '' }}]
+category: {{ post.category }}
+url: {{ post.url }}
+status: "\U0001F331 Seedling"
+---
+
+# {{ post.title }}
+
+## AI Summary
+{{ post.summary_text if post.summary_text else '_No summary available yet._' }}
+
+## Topics
+{% if post.tags %}{% for tag in post.tags %}- [[{{ tag }}]]
+{% endfor %}{% else %}_No topics tagged yet._
+{% endif %}
+
+## Source
+- Blog: [[{{ post.source_name }}]]
+- Author: [[{{ post.author_name if post.author_name else 'Unknown' }}]]
+- Original: [Read Full Post]({{ post.url }})
