@@ -113,3 +113,50 @@ models:
         description: "Source creation timestamp"
       - name: updated_at
         description: "Source last update timestamp"
+
+  - name: mart_newsletter_candidates
+    description: "Top 20 ranked posts from the current week for newsletter inclusion, scored by source quality, recency, and category diversity"
+    columns:
+      - name: id
+        description: "Post primary key"
+        data_tests:
+          - unique
+          - not_null
+          - relationships:
+              to: ref('mart_posts')
+              field: id
+      - name: source_id
+        description: "Foreign key to source (useful for grouping by source in newsletter)"
+        data_tests:
+          - not_null
+      - name: title
+        description: "Post title"
+        data_tests:
+          - not_null
+      - name: url
+        description: "Original post URL"
+        data_tests:
+          - not_null
+      - name: summary_text
+        description: "AI-generated summary (required for newsletter)"
+        data_tests:
+          - not_null
+      - name: author_name
+        description: "Post author name"
+      - name: source_name
+        description: "Blog source name"
+      - name: category
+        description: "Blog source category"
+        data_tests:
+          - accepted_values:
+              values: ['Software Engineering Blogs', 'DevOps & SRE', 'Data Engineering', 'Machine Learning & AI', 'Cloud & Infrastructure', 'Security', 'Product & Startup', 'Management & Leadership', 'Web Development', 'Systems & Performance']
+      - name: publication_date
+        description: "Post publication date (within last 7 days)"
+      - name: tags
+        description: "JSONB array of topic tags"
+      - name: difficulty_classification
+        description: "AI difficulty classification"
+      - name: score
+        description: "Composite ranking score (quality + recency + diversity)"
+        data_tests:
+          - not_null

@@ -61,3 +61,19 @@ class AiSummary:
     difficulty_classification: str
     raw_api_response: Optional[dict] = None
     created_at: Optional[datetime] = None
+
+
+@dataclass
+class NewsletterCandidate:
+    id: Optional[int]
+    source_id: int
+    title: str
+    url: str
+    summary_text: str
+    author_name: str
+    source_name: str
+    category: str
+    publication_date: Optional[datetime]
+    tags: list[str]
+    difficulty_classification: str
+    score: float

@@ -1,0 +1,44 @@
+[
+  {
+    "id": 1,
+    "source_id": 10,
+    "title": "Understanding Event-Driven Architecture",
+    "url": "https://example.com/event-driven-arch",
+    "summary_text": "This post explores event-driven patterns for building scalable microservices. It covers message queues, event streams, and eventual consistency.",
+    "author_name": "Jane Smith",
+    "source_name": "Engineering Blog",
+    "category": "Software Engineering",
+    "publication_date": "2026-02-28",
+    "tags": ["architecture", "events", "patterns"],
+    "difficulty_classification": "Intermediate",
+    "score": 145.5
+  },
+  {
+    "id": 2,
+    "source_id": 15,
+    "title": "Kubernetes Best Practices for Production",
+    "url": "https://example.com/k8s-best-practices",
+    "summary_text": "A comprehensive guide to running Kubernetes in production. Covers resource limits, health checks, and deployment strategies.",
+    "author_name": "Bob Johnson",
+    "source_name": "DevOps Weekly",
+    "category": "DevOps & SRE",
+    "publication_date": "2026-02-27",
+    "tags": ["kubernetes", "devops", "production"],
+    "difficulty_classification": "Advanced",
+    "score": 142.3
+  },
+  {
+    "id": 3,
+    "source_id": 20,
+    "title": "Introduction to Apache Spark for Data Processing",
+    "url": "https://example.com/spark-intro",
+    "summary_text": "Learn the fundamentals of Apache Spark for distributed data processing. Includes examples with PySpark and performance tuning tips.",
+    "author_name": "Alice Chen",
+    "source_name": "Data Engineering Daily",
+    "category": "Data Engineering",
+    "publication_date": "2026-02-26",
+    "tags": ["spark", "data", "distributed-systems"],
+    "difficulty_classification": "Intermediate",
+    "score": 138.7
+  }
+]
