@@ -21,6 +21,8 @@ from src.vault.note_validator import (
 )
 
 __all__ = [
+    # publishing
+    "GitPublisher",
     # generation
     "generate_all",
     "generate_author_notes",
