@@ -65,15 +65,17 @@ class AiSummary:
 
 @dataclass
 class NewsletterCandidate:
-    id: Optional[int]
-    source_id: int
+    """Represents a row from mart_newsletter_candidates view."""
+    post_id: int
     title: str
-    url: str
-    summary_text: str
+    summary_text: Optional[str]
+    tags: Optional[list]
+    difficulty_classification: str
     author_name: str
     source_name: str
     category: str
+    quality_rating: int
     publication_date: Optional[datetime]
-    tags: list[str]
-    difficulty_classification: str
-    score: float
+    url: str
+    rank_score: float
+    category_rank: int
