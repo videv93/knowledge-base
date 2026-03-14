@@ -115,48 +115,54 @@ models:
         description: "Source last update timestamp"
 
   - name: mart_newsletter_candidates
-    description: "Top 20 ranked posts from the current week for newsletter inclusion, scored by source quality, recency, and category diversity"
+    description: "Weekly top 20 newsletter candidates ranked by source quality, recency, and category diversity"
     columns:
-      - name: id
-        description: "Post primary key"
+      - name: post_id
+        description: "Post primary key from mart_posts"
         data_tests:
+          - not_null
           - unique
-          - not_null
-          - relationships:
-              to: ref('mart_posts')
-              field: id
-      - name: source_id
-        description: "Foreign key to source (useful for grouping by source in newsletter)"
-        data_tests:
-          - not_null
       - name: title
-        description: "Post title"
-        data_tests:
-          - not_null
-      - name: url
-        description: "Original post URL"
+        description: "Blog post title"
         data_tests:
           - not_null
       - name: summary_text
-        description: "AI-generated summary (required for newsletter)"
+        description: "AI-generated 3-5 sentence summary (non-null — unsummarized posts are excluded)"
         data_tests:
           - not_null
+      - name: tags
+        description: "JSONB array of topic tags extracted by AI"
+      - name: difficulty_classification
+        description: "AI difficulty classification (beginner/intermediate/advanced)"
       - name: author_name
-        description: "Post author name"
+        description: "Post author display name"
+        data_tests:
+          - not_null
       - name: source_name
         description: "Blog source name"
-      - name: category
-        description: "Blog source category"
         data_tests:
-          - accepted_values:
-              values: ['Software Engineering Blogs', 'DevOps & SRE', 'Data Engineering', 'Machine Learning & AI', 'Cloud & Infrastructure', 'Security', 'Product & Startup', 'Management & Leadership', 'Web Development', 'Systems & Performance']
+          - not_null
+      - name: category
+        description: "Content category from the 10 curated categories"
+        data_tests:
+          - not_null
+      - name: quality_rating
+        description: "Source quality rating (1-5 scale)"
+        data_tests:
+          - not_null
       - name: publication_date
-        description: "Post publication date (within last 7 days)"
-      - name: tags
-        description: "JSONB array of topic tags"
-      - name: difficulty_classification
-        description: "AI difficulty classification"
-      - name: score
-        description: "Composite ranking score (quality + recency + diversity)"
+        description: "Post publication date (UTC)"
+        data_tests:
+          - not_null
+      - name: url
+        description: "Original blog post URL"
+        data_tests:
+          - not_null
+      - name: rank_score
+        description: "Composite ranking score (quality 40% + recency 40% + diversity 20%, bounded 0.0-1.0)"
+        data_tests:
+          - not_null
+      - name: category_rank
+        description: "Rank within category (1-5); capped for diversity — never exceeds 5"
         data_tests:
           - not_null

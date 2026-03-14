@@ -153,7 +153,7 @@ class TestLogRunSummary:
 
     def test_logs_metrics(self, caplog):
         mock_ti = MagicMock()
-        mock_ti.xcom_pull.side_effect = lambda task_ids: {
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key=None: {
             "run_ingestion": {
                 "total_success": 10,
                 "total_duplicates": 3,
@@ -167,7 +167,7 @@ class TestLogRunSummary:
                 "failed": 1,
                 "skipped": 1,
             },
-        }.get(task_ids)
+        }.get(task_ids) if key is None else None
 
         mod = _load_ingestion_daily()
 

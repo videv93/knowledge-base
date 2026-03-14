@@ -6,7 +6,7 @@ import sys
 import types
 from datetime import timedelta
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -199,23 +199,23 @@ class TestDagStructure:
             "run_dbt_models",
             "test_dbt_models",
             "generate_vault_notes",
-            "validate_vault_notes",
-            "publish_vault",
+            "validate_notes",
+            "git_push_vault",
             "log_run_summary",
         }
         assert set(self.operators.keys()) == expected
 
     def test_task_dependency_chain(self):
-        """Verify >> chain: fetch → ingest → summarize → dbt run → dbt test → vault → log."""
+        """Verify full >> chain including vault generation tasks."""
         expected_chain = [
             ("fetch_active_sources", "run_ingestion"),
             ("run_ingestion", "summarize_posts"),
             ("summarize_posts", "run_dbt_models"),
             ("run_dbt_models", "test_dbt_models"),
             ("test_dbt_models", "generate_vault_notes"),
-            ("generate_vault_notes", "validate_vault_notes"),
-            ("validate_vault_notes", "publish_vault"),
-            ("publish_vault", "log_run_summary"),
+            ("generate_vault_notes", "validate_notes"),
+            ("validate_notes", "git_push_vault"),
+            ("git_push_vault", "log_run_summary"),
         ]
         assert self.rshift_calls == expected_chain
 
@@ -259,21 +259,6 @@ class TestDagStructure:
         # Both should point to same dbt directory
         assert "dbt" in run_task.bash_command
         assert "dbt" in test_task.bash_command
-
-    def test_generate_vault_notes_is_python_operator(self):
-        task = self.operators["generate_vault_notes"]
-        assert task.python_callable is not None
-        assert task.python_callable.__name__ == "_generate_vault_notes"
-
-    def test_validate_vault_notes_is_python_operator(self):
-        task = self.operators["validate_vault_notes"]
-        assert task.python_callable is not None
-        assert task.python_callable.__name__ == "_validate_vault_notes"
-
-    def test_publish_vault_is_python_operator(self):
-        task = self.operators["publish_vault"]
-        assert task.python_callable is not None
-        assert task.python_callable.__name__ == "_publish_vault"
 
     def test_summarize_posts_calls_module_not_inline_logic(self):
         """The summarize callable must delegate to src/summarization module."""
@@ -331,20 +316,329 @@ class TestSummarizePostsCallable:
 
 
 class TestLogRunSummaryUpdated:
-    """Tests for the updated _log_run_summary that logs both ingestion and summarization."""
+    """Tests for the updated _log_run_summary that logs all pipeline metrics."""
 
     @pytest.fixture(autouse=True)
     def load_dag(self):
         self.mod, _, _, _ = _load_ingestion_daily()
 
-    def test_logs_both_ingestion_and_summarization_metrics(self, caplog):
+    def test_logs_all_pipeline_metrics(self, caplog):
+        def xcom_pull_side_effect(task_ids, key=None):
+            if key == "tmp_root_dir":
+                return None
+            return {
+                "run_ingestion": {"total_success": 5},
+                "summarize_posts": {"succeeded": 3, "failed": 1},
+                "generate_vault_notes": {"posts_generated": 50, "sources_generated": 10},
+                "validate_notes": {"passed": 48, "failed": 2},
+            }.get(task_ids)
+
         mock_ti = MagicMock()
-        mock_ti.xcom_pull.side_effect = lambda task_ids: {
-            "run_ingestion": {"total_success": 5},
-            "summarize_posts": {"succeeded": 3, "failed": 1},
-        }.get(task_ids)
+        mock_ti.xcom_pull.side_effect = xcom_pull_side_effect
 
         with caplog.at_level(logging.INFO):
             self.mod._log_run_summary(ti=mock_ti)
 
         assert "Daily pipeline complete" in caplog.text
+
+    def test_includes_vault_stats_in_log(self, caplog):
+        def xcom_pull_side_effect(task_ids, key=None):
+            if key == "tmp_root_dir":
+                return None
+            return {
+                "run_ingestion": {"total_success": 5},
+                "summarize_posts": {"succeeded": 3, "failed": 1},
+                "generate_vault_notes": {"posts_generated": 50},
+                "validate_notes": {"passed": 48, "failed": 2},
+            }.get(task_ids)
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = xcom_pull_side_effect
+
+        with caplog.at_level(logging.INFO):
+            self.mod._log_run_summary(ti=mock_ti)
+
+        assert "vault_generation" in caplog.text
+        assert "vault_validation" in caplog.text
+
+    def test_cleans_up_temp_dir_when_present(self):
+        def xcom_pull_side_effect(task_ids, key=None):
+            if task_ids == "generate_vault_notes" and key == "tmp_root_dir":
+                return "/tmp/fake-vault-root"
+            return None
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = xcom_pull_side_effect
+
+        with patch("shutil.rmtree") as mock_rmtree:
+            self.mod._log_run_summary(ti=mock_ti)
+
+        mock_rmtree.assert_called_once_with("/tmp/fake-vault-root", ignore_errors=True)
+
+    def test_skips_cleanup_when_no_tmp_root(self):
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.return_value = None
+
+        with patch("shutil.rmtree") as mock_rmtree:
+            self.mod._log_run_summary(ti=mock_ti)
+
+        mock_rmtree.assert_not_called()
+
+
+class TestGenerateVaultNotesCallable:
+    """Tests for the _generate_vault_notes DAG callable."""
+
+    @pytest.fixture(autouse=True)
+    def load_dag(self):
+        self.mod, _, _, _ = _load_ingestion_daily()
+
+    def test_calls_generate_all_and_returns_stats(self):
+        mock_stats = {
+            "posts_generated": 50,
+            "sources_generated": 10,
+            "authors_generated": 5,
+            "total_notes": 65,
+        }
+        mock_ti = MagicMock()
+
+        vault_mocks = {
+            "src": MagicMock(),
+            "src.vault": MagicMock(),
+            "src.vault.note_generator": MagicMock(),
+        }
+        with patch.dict(sys.modules, vault_mocks):
+            with patch("src.vault.note_generator.generate_all", return_value=mock_stats) as mock_gen:
+                with patch("tempfile.mkdtemp", return_value="/tmp/test-vault-123"):
+                    result = self.mod._generate_vault_notes(ti=mock_ti, ds="2026-03-13")
+
+        assert result == mock_stats
+        # Verify generate_all was called with tmp_root / "generated", not tmp_root itself
+        called_path = mock_gen.call_args.args[0]
+        assert str(called_path).endswith("/generated"), (
+            f"Expected generate_all called with .../generated, got: {called_path}"
+        )
+
+    def test_pushes_tmp_generated_dir_to_xcom(self):
+        mock_ti = MagicMock()
+        mock_stats = {"posts_generated": 10}
+
+        vault_mocks = {
+            "src": MagicMock(),
+            "src.vault": MagicMock(),
+            "src.vault.note_generator": MagicMock(),
+        }
+        with patch.dict(sys.modules, vault_mocks):
+            with patch("src.vault.note_generator.generate_all", return_value=mock_stats):
+                with patch("tempfile.mkdtemp", return_value="/tmp/test-vault-456"):
+                    self.mod._generate_vault_notes(ti=mock_ti, ds="2026-03-13")
+
+        pushed_keys = {c.kwargs.get("key") for c in mock_ti.xcom_push.call_args_list}
+        assert "tmp_generated_dir" in pushed_keys
+        assert "tmp_root_dir" in pushed_keys
+
+    def test_src_imports_are_lazy_inside_callable(self):
+        """Vault imports must be inside the callable, not at module level."""
+        import inspect
+        source = inspect.getsource(self.mod._generate_vault_notes)
+        # Import should be inside the function body
+        assert "from src.vault.note_generator import generate_all" in source
+
+
+class TestValidateNotesCallable:
+    """Tests for the _validate_notes DAG callable."""
+
+    @pytest.fixture(autouse=True)
+    def load_dag(self):
+        self.mod, _, _, _ = _load_ingestion_daily()
+
+    def test_calls_validate_all_with_tmp_dir(self):
+        mock_summary = MagicMock()
+        mock_summary.passed = 48
+        mock_summary.failed = 0
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key=None: (
+            "/tmp/test-generated" if task_ids == "generate_vault_notes" and key == "tmp_generated_dir" else None
+        )
+
+        validator_mocks = {
+            "src": MagicMock(),
+            "src.vault": MagicMock(),
+            "src.vault.note_validator": MagicMock(),
+        }
+        with patch.dict(sys.modules, validator_mocks):
+            with patch("src.vault.note_validator.validate_all", return_value=mock_summary):
+                result = self.mod._validate_notes(ti=mock_ti)
+
+        assert result == {"passed": 48, "failed": 0}
+
+    def test_returns_zeros_when_xcom_missing(self, caplog):
+        """If tmp_generated_dir XCom is missing, return zeros without raising."""
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.return_value = None
+
+        with caplog.at_level(logging.WARNING):
+            result = self.mod._validate_notes(ti=mock_ti)
+
+        assert result == {"passed": 0, "failed": 0}
+        assert "tmp_generated_dir" in caplog.text
+
+    def test_does_not_raise_on_validation_failures(self):
+        """Validation failures must NOT block git push — they only log warnings."""
+        mock_summary = MagicMock()
+        mock_summary.passed = 40
+        mock_summary.failed = 10
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key=None: (
+            "/tmp/test-generated" if task_ids == "generate_vault_notes" and key == "tmp_generated_dir" else None
+        )
+
+        validator_mocks = {
+            "src": MagicMock(),
+            "src.vault": MagicMock(),
+            "src.vault.note_validator": MagicMock(),
+        }
+        with patch.dict(sys.modules, validator_mocks):
+            with patch("src.vault.note_validator.validate_all", return_value=mock_summary):
+                # Should NOT raise even with 10 failures
+                result = self.mod._validate_notes(ti=mock_ti)
+
+        assert result["failed"] == 10
+
+    def test_logs_warning_on_failures(self, caplog):
+        mock_summary = MagicMock()
+        mock_summary.passed = 40
+        mock_summary.failed = 5
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key=None: (
+            "/tmp/test-generated" if task_ids == "generate_vault_notes" and key == "tmp_generated_dir" else None
+        )
+
+        validator_mocks = {
+            "src": MagicMock(),
+            "src.vault": MagicMock(),
+            "src.vault.note_validator": MagicMock(),
+        }
+        with patch.dict(sys.modules, validator_mocks):
+            with patch("src.vault.note_validator.validate_all", return_value=mock_summary):
+                with caplog.at_level(logging.WARNING):
+                    self.mod._validate_notes(ti=mock_ti)
+
+        assert "5" in caplog.text
+        assert "failed" in caplog.text.lower()
+
+
+class TestPublishVaultCallable:
+    """Tests for the _publish_vault DAG callable."""
+
+    @pytest.fixture(autouse=True)
+    def load_dag(self):
+        self.mod, _, _, _ = _load_ingestion_daily()
+
+    def test_calls_publisher_publish_with_correct_args(self):
+        gen_stats = {"posts_generated": 55, "sources_generated": 211}
+
+        def xcom_pull_side_effect(task_ids, key=None):
+            if task_ids == "generate_vault_notes" and key == "tmp_generated_dir":
+                return "/tmp/test-generated"
+            if task_ids == "generate_vault_notes":
+                return gen_stats
+            return None
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = xcom_pull_side_effect
+
+        mock_publisher = MagicMock()
+        mock_config = MagicMock()
+        mock_config.VAULT_REPO_URL = "git@github.com:user/vault.git"
+        mock_config.VAULT_REPO_SSH_KEY_PATH = "/home/user/.ssh/id_rsa"
+        mock_config.VAULT_LOCAL_PATH = "/tmp/vault-clone"
+
+        import src.common
+        with patch.object(src.common, "config", mock_config):
+            with patch.dict(sys.modules, {
+                "src.vault": MagicMock(),
+                "src.vault.git_publisher": MagicMock(),
+            }):
+                with patch("src.vault.git_publisher.GitPublisher", return_value=mock_publisher):
+                    self.mod._publish_vault(ti=mock_ti, ds="2026-03-13")
+
+        mock_publisher.publish.assert_called_once()
+        call_args = mock_publisher.publish.call_args
+        # publish() uses positional args: (src_generated_dir, run_date, post_count, source_count)
+        assert call_args.args[1] == "2026-03-13"
+
+    def test_uses_posts_generated_key_not_post_count(self):
+        """Must use stats['posts_generated'], not stats['post_count'] — avoid Story 3.5 bug."""
+        gen_stats = {"posts_generated": 42, "sources_generated": 5}
+
+        def xcom_pull_side_effect(task_ids, key=None):
+            if task_ids == "generate_vault_notes" and key == "tmp_generated_dir":
+                return "/tmp/test-generated"
+            if task_ids == "generate_vault_notes":
+                return gen_stats
+            return None
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = xcom_pull_side_effect
+
+        mock_publisher = MagicMock()
+        mock_config = MagicMock()
+        mock_config.VAULT_REPO_URL = "git@github.com:user/vault.git"
+        mock_config.VAULT_REPO_SSH_KEY_PATH = "/home/user/.ssh/id_rsa"
+        mock_config.VAULT_LOCAL_PATH = "/tmp/vault-clone"
+
+        import src.common
+        with patch.object(src.common, "config", mock_config):
+            with patch.dict(sys.modules, {
+                "src.vault": MagicMock(),
+                "src.vault.git_publisher": MagicMock(),
+            }):
+                with patch("src.vault.git_publisher.GitPublisher", return_value=mock_publisher):
+                    self.mod._publish_vault(ti=mock_ti, ds="2026-03-13")
+
+        call_args = mock_publisher.publish.call_args
+        # post_count arg should be 42 (from posts_generated), not 0
+        positional_args = call_args.args
+        keyword_args = call_args.kwargs
+        all_args = list(positional_args) + list(keyword_args.values())
+        assert 42 in all_args, f"Expected post_count=42 in publish call args: {call_args}"
+
+    def test_raises_value_error_when_tmp_dir_xcom_missing(self):
+        """Missing tmp_generated_dir XCom should raise ValueError with context."""
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.return_value = None  # all xcom pulls return None
+
+        import pytest as _pytest
+        with _pytest.raises(ValueError, match="tmp_generated_dir"):
+            self.mod._publish_vault(ti=mock_ti, ds="2026-03-13")
+
+    def test_handles_none_stats_gracefully(self):
+        """If gen stats XCom is None, should default to 0 counts."""
+        def xcom_pull_side_effect(task_ids, key=None):
+            if task_ids == "generate_vault_notes" and key == "tmp_generated_dir":
+                return "/tmp/test-generated"
+            return None  # stats is None
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = xcom_pull_side_effect
+
+        mock_publisher = MagicMock()
+        mock_config = MagicMock()
+        mock_config.VAULT_REPO_URL = ""
+        mock_config.VAULT_REPO_SSH_KEY_PATH = ""
+        mock_config.VAULT_LOCAL_PATH = "/tmp/vault-clone"
+
+        import src.common
+        with patch.object(src.common, "config", mock_config):
+            with patch.dict(sys.modules, {
+                "src.vault": MagicMock(),
+                "src.vault.git_publisher": MagicMock(),
+            }):
+                with patch("src.vault.git_publisher.GitPublisher", return_value=mock_publisher):
+                    self.mod._publish_vault(ti=mock_ti, ds="2026-03-13")
+
+        # Should not raise — 0 counts used as fallback
+        mock_publisher.publish.assert_called_once()
