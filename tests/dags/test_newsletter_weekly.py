@@ -1,6 +1,8 @@
 """Tests for dags/newsletter_weekly.py."""
 
 import importlib.util
+import inspect
+import logging
 import sys
 import types
 from pathlib import Path
@@ -11,7 +13,7 @@ import pytest
 _dags_dir = Path(__file__).resolve().parents[2] / "dags"
 
 
-def _load_newsletter_weekly_dag():
+def _load_newsletter_weekly():
     """Load newsletter_weekly module with mocked airflow dependencies.
 
     Captures DAG constructor args and operator instantiations for structural testing.
@@ -89,164 +91,284 @@ class TestNewsletterWeeklyDagStructure:
 
     @pytest.fixture(autouse=True)
     def load_dag(self):
-        self.mod, self.dag_ctor, self.operators, self.rshift_calls = _load_newsletter_weekly_dag()
+        self.mod, self.dag_ctor, self.operators, self.rshift_calls = _load_newsletter_weekly()
+
+    def test_dag_loads_without_errors(self):
+        assert self.mod is not None
 
     def test_dag_id_is_newsletter_weekly(self):
         dag_kwargs = self.dag_ctor.call_args
         assert dag_kwargs.kwargs.get("dag_id") == "newsletter_weekly"
 
-    def test_schedule_is_weekly(self):
+    def test_schedule_is_weekly_monday(self):
         dag_kwargs = self.dag_ctor.call_args
-        assert dag_kwargs.kwargs.get("schedule") == "@weekly"
-
-    def test_dag_has_expected_task_ids(self):
-        expected = {
-            "run_dbt_models",
-            "test_dbt_models",
-            "format_newsletter_content",
-            "push_to_beehiiv",
-            "notify_draft_ready",
-        }
-        assert set(self.operators.keys()) == expected
-
-    def test_task_dependency_chain(self):
-        """Verify >> chain: run_dbt_models → test_dbt_models → format → push → notify."""
-        expected_chain = [
-            ("run_dbt_models", "test_dbt_models"),
-            ("test_dbt_models", "format_newsletter_content"),
-            ("format_newsletter_content", "push_to_beehiiv"),
-            ("push_to_beehiiv", "notify_draft_ready"),
-        ]
-        assert self.rshift_calls == expected_chain
+        assert dag_kwargs.kwargs.get("schedule") == "0 8 * * 1"
 
     def test_catchup_is_false(self):
         dag_kwargs = self.dag_ctor.call_args
         assert dag_kwargs.kwargs.get("catchup") is False
 
-    def test_max_active_runs_is_one(self):
-        dag_kwargs = self.dag_ctor.call_args
-        assert dag_kwargs.kwargs.get("max_active_runs") == 1
+    def test_dag_has_exactly_four_tasks(self):
+        assert len(self.operators) == 4
 
-    def test_uses_default_args_retries(self):
-        dag_kwargs = self.dag_ctor.call_args
-        args = dag_kwargs.kwargs.get("default_args", {})
-        assert args["retries"] == 3
+    def test_dag_has_expected_task_ids(self):
+        expected = {
+            "refresh_newsletter_candidates",
+            "format_newsletter",
+            "push_to_beehiiv",
+            "notify_operator",
+        }
+        assert set(self.operators.keys()) == expected
 
-    def test_uses_default_args_email_on_failure(self):
-        dag_kwargs = self.dag_ctor.call_args
-        args = dag_kwargs.kwargs.get("default_args", {})
-        assert args["email_on_failure"] is True
+    def test_task_dependency_chain(self):
+        """Verify >> chain: refresh -> format -> push -> notify."""
+        expected_chain = [
+            ("refresh_newsletter_candidates", "format_newsletter"),
+            ("format_newsletter", "push_to_beehiiv"),
+            ("push_to_beehiiv", "notify_operator"),
+        ]
+        assert self.rshift_calls == expected_chain
 
-    def test_tags_include_newsletter_and_beehiiv(self):
+    def test_tags_include_expected(self):
         dag_kwargs = self.dag_ctor.call_args
         tags = dag_kwargs.kwargs.get("tags", [])
         assert "knowledge-base" in tags
         assert "newsletter" in tags
-        assert "beehiiv" in tags
+        assert "weekly" in tags
 
-    def test_dbt_operators_are_bash_operators(self):
-        """run_dbt_models and test_dbt_models should have bash_command."""
-        assert self.operators["run_dbt_models"].bash_command is not None
-        assert self.operators["test_dbt_models"].bash_command is not None
+    def test_max_active_runs_is_one(self):
+        dag_kwargs = self.dag_ctor.call_args
+        assert dag_kwargs.kwargs.get("max_active_runs") == 1
 
-    def test_dbt_commands_target_correct_model(self):
-        run_cmd = self.operators["run_dbt_models"].bash_command
-        test_cmd = self.operators["test_dbt_models"].bash_command
-        assert "mart_newsletter_candidates" in run_cmd
-        assert "mart_newsletter_candidates" in test_cmd
-        assert "--project-dir" in run_cmd
-        assert "--profiles-dir" in run_cmd
+    def test_uses_default_args(self):
+        dag_kwargs = self.dag_ctor.call_args
+        args = dag_kwargs.kwargs.get("default_args", {})
+        assert args["retries"] == 3
+        assert args["owner"] == "knowledge-base"
 
-    def test_python_tasks_have_callables(self):
-        for task_id in ("format_newsletter_content", "push_to_beehiiv", "notify_draft_ready"):
-            assert self.operators[task_id].python_callable is not None
+    def test_refresh_is_bash_operator(self):
+        task = self.operators["refresh_newsletter_candidates"]
+        assert task.bash_command is not None
+        assert "dbt run" in task.bash_command
+        assert "dbt test" in task.bash_command
+        assert "mart_newsletter_candidates" in task.bash_command
+
+    def test_dbt_commands_use_project_dir(self):
+        task = self.operators["refresh_newsletter_candidates"]
+        assert "--project-dir" in task.bash_command
+        assert "--profiles-dir" in task.bash_command
+
+    def test_format_newsletter_is_python_operator(self):
+        task = self.operators["format_newsletter"]
+        assert task.python_callable is not None
+        assert task.python_callable.__name__ == "_format_newsletter"
+
+    def test_push_to_beehiiv_is_python_operator(self):
+        task = self.operators["push_to_beehiiv"]
+        assert task.python_callable is not None
+        assert task.python_callable.__name__ == "_push_to_beehiiv"
+
+    def test_notify_operator_is_python_operator(self):
+        task = self.operators["notify_operator"]
+        assert task.python_callable is not None
+        assert task.python_callable.__name__ == "_notify_operator"
 
 
 class TestNewsletterWeeklyCallables:
-    """Tests for the internal callable functions in newsletter_weekly.py."""
+    """Tests that each callable uses lazy imports and proper patterns."""
 
     @pytest.fixture(autouse=True)
     def load_dag(self):
-        self.mod, _, self.operators, _ = _load_newsletter_weekly_dag()
+        self.mod, _, self.operators, _ = _load_newsletter_weekly()
 
-    def test_format_newsletter_content_success(self):
-        mock_conn = MagicMock()
-        mock_ctx_mgr = MagicMock()
-        mock_ctx_mgr.__enter__ = MagicMock(return_value=mock_conn)
-        mock_ctx_mgr.__exit__ = MagicMock(return_value=False)
-        mock_generate = MagicMock(return_value="## Newsletter content")
+    def test_format_newsletter_lazy_imports(self):
+        source = inspect.getsource(self.operators["format_newsletter"].python_callable)
+        assert "src.newsletter.content_formatter" in source
+        assert "fetch_newsletter_candidates" in source
+        assert "group_by_category" in source
+        assert "format_newsletter_content" in source
 
-        with patch("src.common.db.get_connection", return_value=mock_ctx_mgr), \
-             patch("src.newsletter.content_formatter.generate_newsletter_content", mock_generate):
-            result = self.mod._format_newsletter_content()
+    def test_push_to_beehiiv_lazy_imports(self):
+        source = inspect.getsource(self.operators["push_to_beehiiv"].python_callable)
+        assert "src.newsletter.beehiiv_client" in source
+        assert "BeehiivClient" in source
 
-        assert result == "## Newsletter content"
-        mock_generate.assert_called_once_with(mock_conn)
+    def test_notify_operator_uses_os_environ_for_slack(self):
+        source = inspect.getsource(self.operators["notify_operator"].python_callable)
+        assert "SLACK_WEBHOOK_URL" in source
 
-    def test_format_newsletter_content_raises_on_empty(self):
-        mock_conn = MagicMock()
-        mock_ctx_mgr = MagicMock()
-        mock_ctx_mgr.__enter__ = MagicMock(return_value=mock_conn)
-        mock_ctx_mgr.__exit__ = MagicMock(return_value=False)
+    def test_format_newsletter_pushes_xcom(self):
+        source = inspect.getsource(self.operators["format_newsletter"].python_callable)
+        assert "xcom_push" in source
+        assert "newsletter_content" in source
+        assert "candidate_count" in source
 
-        with patch("src.common.db.get_connection", return_value=mock_ctx_mgr), \
-             patch("src.newsletter.content_formatter.generate_newsletter_content", return_value=""):
-            with pytest.raises(ValueError, match="empty content"):
-                self.mod._format_newsletter_content()
+    def test_push_to_beehiiv_pulls_xcom(self):
+        source = inspect.getsource(self.operators["push_to_beehiiv"].python_callable)
+        assert "xcom_pull" in source
+        assert "format_newsletter" in source
 
-    def test_push_to_beehiiv_success(self):
+    def test_notify_operator_pulls_xcom(self):
+        source = inspect.getsource(self.operators["notify_operator"].python_callable)
+        assert "xcom_pull" in source
+        assert "push_to_beehiiv" in source
+
+
+class TestFormatNewsletterCallable:
+    """Tests for _format_newsletter task callable logic."""
+
+    @pytest.fixture(autouse=True)
+    def load_dag(self):
+        self.mod, _, _, _ = _load_newsletter_weekly()
+
+    def test_with_candidates(self):
+        mock_candidates = [MagicMock(), MagicMock()]
         mock_ti = MagicMock()
-        mock_ti.xcom_pull.return_value = "## Newsletter content here"
 
-        with patch("src.newsletter.beehiiv_client.push_draft", return_value="post_abc123"):
-            result = self.mod._push_to_beehiiv(ti=mock_ti, ds="2026-03-16")
+        with patch(
+            "src.newsletter.content_formatter.fetch_newsletter_candidates",
+            return_value=mock_candidates,
+        ), patch(
+            "src.newsletter.content_formatter.group_by_category",
+            return_value=mock_candidates,
+        ), patch(
+            "src.newsletter.content_formatter.format_newsletter_content",
+            return_value="## Newsletter Content",
+        ):
+            self.mod._format_newsletter(ti=mock_ti)
 
-        assert result == "post_abc123"
-        mock_ti.xcom_pull.assert_called_once_with(task_ids="format_newsletter_content")
+        mock_ti.xcom_push.assert_any_call(key="newsletter_content", value="## Newsletter Content")
+        mock_ti.xcom_push.assert_any_call(key="candidate_count", value=2)
 
-    def test_push_to_beehiiv_builds_title_with_ds(self):
+    def test_with_empty_candidates(self):
         mock_ti = MagicMock()
-        mock_ti.xcom_pull.return_value = "## Content"
 
-        captured_title = {}
+        with patch(
+            "src.newsletter.content_formatter.fetch_newsletter_candidates",
+            return_value=[],
+        ):
+            self.mod._format_newsletter(ti=mock_ti)
 
-        def fake_push_draft(title, body_content):
-            captured_title["title"] = title
-            return "post_xyz"
+        mock_ti.xcom_push.assert_any_call(key="newsletter_content", value="")
+        mock_ti.xcom_push.assert_any_call(key="candidate_count", value=0)
 
-        with patch("src.newsletter.beehiiv_client.push_draft", side_effect=fake_push_draft):
-            self.mod._push_to_beehiiv(ti=mock_ti, ds="2026-03-16")
 
-        assert "2026-03-16" in captured_title["title"]
+class TestPushToBeehiivCallable:
+    """Tests for _push_to_beehiiv task callable logic."""
 
-    def test_push_to_beehiiv_raises_if_xcom_empty(self):
+    @pytest.fixture(autouse=True)
+    def load_dag(self):
+        self.mod, _, _, _ = _load_newsletter_weekly()
+
+    def test_creates_draft_with_content(self):
         mock_ti = MagicMock()
-        mock_ti.xcom_pull.return_value = None
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key: {
+            ("format_newsletter", "newsletter_content"): "## Content here",
+        }.get((task_ids, key))
 
-        with pytest.raises(ValueError, match="No newsletter content in XCom"):
-            self.mod._push_to_beehiiv(ti=mock_ti, ds="2026-03-16")
+        mock_client = MagicMock()
+        mock_client.create_draft.return_value = {"id": "post_abc123", "status": "draft"}
 
-    def test_push_to_beehiiv_raises_if_xcom_empty_string(self):
+        with patch("src.newsletter.beehiiv_client.BeehiivClient", return_value=mock_client):
+            self.mod._push_to_beehiiv(ti=mock_ti)
+
+        mock_client.create_draft.assert_called_once()
+        call_kwargs = mock_client.create_draft.call_args.kwargs
+        assert "Weekly Knowledge Digest" in call_kwargs["title"]
+        assert call_kwargs["content"] == "## Content here"
+        mock_ti.xcom_push.assert_any_call(key="draft_id", value="post_abc123")
+
+    def test_skips_when_no_content(self):
         mock_ti = MagicMock()
-        mock_ti.xcom_pull.return_value = ""
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key: {
+            ("format_newsletter", "newsletter_content"): "",
+        }.get((task_ids, key))
 
-        with pytest.raises(ValueError, match="No newsletter content in XCom"):
-            self.mod._push_to_beehiiv(ti=mock_ti, ds="2026-03-16")
+        self.mod._push_to_beehiiv(ti=mock_ti)
 
-    def test_notify_draft_ready_logs_post_id(self, caplog):
+        mock_ti.xcom_push.assert_any_call(key="draft_id", value=None)
+
+
+class TestNotifyOperatorCallable:
+    """Tests for _notify_operator task callable logic."""
+
+    @pytest.fixture(autouse=True)
+    def load_dag(self):
+        self.mod, _, _, _ = _load_newsletter_weekly()
+
+    def test_with_draft_ready(self, caplog):
         mock_ti = MagicMock()
-        mock_ti.xcom_pull.return_value = "post_abc123"
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key: {
+            ("push_to_beehiiv", "draft_id"): "post_abc123",
+            ("push_to_beehiiv", "draft_title"): "Weekly Knowledge Digest - 2026-03-23",
+            ("format_newsletter", "candidate_count"): 15,
+        }.get((task_ids, key))
 
-        import logging
         with caplog.at_level(logging.INFO):
-            self.mod._notify_draft_ready(ti=mock_ti, ds="2026-03-16")
+            self.mod._notify_operator(ti=mock_ti)
 
-        assert "post_abc123" in caplog.text
-        mock_ti.xcom_pull.assert_called_once_with(task_ids="push_to_beehiiv")
+        assert "draft ready for review" in caplog.text
+        assert "15" in caplog.text
 
-    def test_notify_draft_ready_raises_if_xcom_empty(self):
+    def test_with_no_newsletter(self, caplog):
         mock_ti = MagicMock()
-        mock_ti.xcom_pull.return_value = None
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key: {
+            ("push_to_beehiiv", "draft_id"): None,
+            ("push_to_beehiiv", "draft_title"): None,
+            ("format_newsletter", "candidate_count"): 0,
+        }.get((task_ids, key))
 
-        with pytest.raises(ValueError, match="No Beehiiv post ID in XCom"):
-            self.mod._notify_draft_ready(ti=mock_ti, ds="2026-03-16")
+        with caplog.at_level(logging.INFO):
+            self.mod._notify_operator(ti=mock_ti)
+
+        assert "No newsletter generated this week" in caplog.text
+
+    def test_slack_notification_sent(self, monkeypatch, caplog):
+        monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/test")
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key: {
+            ("push_to_beehiiv", "draft_id"): "post_abc123",
+            ("push_to_beehiiv", "draft_title"): "Weekly Knowledge Digest",
+            ("format_newsletter", "candidate_count"): 10,
+        }.get((task_ids, key))
+
+        with patch("httpx.post") as mock_post, caplog.at_level(logging.INFO):
+            self.mod._notify_operator(ti=mock_ti)
+
+        mock_post.assert_called_once()
+        call_args = mock_post.call_args
+        assert call_args[0][0] == "https://hooks.slack.com/test"
+        assert "Slack notification sent" in caplog.text
+
+    def test_no_slack_webhook(self, monkeypatch, caplog):
+        monkeypatch.delenv("SLACK_WEBHOOK_URL", raising=False)
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key: {
+            ("push_to_beehiiv", "draft_id"): "post_abc123",
+            ("push_to_beehiiv", "draft_title"): "Weekly Knowledge Digest",
+            ("format_newsletter", "candidate_count"): 10,
+        }.get((task_ids, key))
+
+        with caplog.at_level(logging.INFO):
+            self.mod._notify_operator(ti=mock_ti)
+
+        assert "No Slack webhook configured" in caplog.text
+
+    def test_slack_failure_does_not_raise(self, monkeypatch, caplog):
+        monkeypatch.setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/test")
+
+        mock_ti = MagicMock()
+        mock_ti.xcom_pull.side_effect = lambda task_ids, key: {
+            ("push_to_beehiiv", "draft_id"): "post_abc123",
+            ("push_to_beehiiv", "draft_title"): "Weekly Knowledge Digest",
+            ("format_newsletter", "candidate_count"): 10,
+        }.get((task_ids, key))
+
+        with patch("httpx.post", side_effect=Exception("network error")), caplog.at_level(
+            logging.WARNING
+        ):
+            self.mod._notify_operator(ti=mock_ti)
+
+        assert "Failed to send Slack notification" in caplog.text

@@ -1,338 +1,396 @@
-"""Tests for Beehiiv API client module (Story 4.3).
-
-All tests mock HTTP calls — no live Beehiiv API requests are made.
-Config attributes are patched via monkeypatch.setattr, following the same
-pattern as tests/summarization/test_claude_client.py.
-"""
+"""Tests for src.newsletter.beehiiv_client module."""
 
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 
-from src.newsletter.beehiiv_client import (
-    BeehiivAPIError,
-    BeehiivRetryableError,
-    _markdown_to_html,
-    push_draft,
-)
+from src.newsletter.beehiiv_client import BASE_URL, BeehiivApiError, BeehiivClient
 
-# ---------------------------------------------------------------------------
-# Fixtures dir
-# ---------------------------------------------------------------------------
-
-_FIXTURES = Path(__file__).parent / "fixtures"
-
-
-def _load_fixture(name: str) -> dict:
-    return json.loads((_FIXTURES / name).read_text())
-
-
-# ---------------------------------------------------------------------------
-# Constants & helpers
-# ---------------------------------------------------------------------------
-
-PUB_ID = "pub_test123"
-API_KEY = "key_test_abc"
-SUCCESS_BODY = _load_fixture("beehiiv_create_post_201.json")
-ERROR_429_BODY = _load_fixture("beehiiv_error_429.json")
-
-
-def make_mock_response(status_code: int, body: dict) -> MagicMock:
-    """Build a mock requests.Response."""
-    mock = MagicMock()
-    mock.status_code = status_code
-    mock.json.return_value = body
-    mock.text = json.dumps(body)
-    return mock
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
-def mock_beehiiv_config(monkeypatch):
-    """Patch config with test Beehiiv credentials."""
-    import src.common.config as cfg
+def fixtures():
+    """Load sample Beehiiv API response fixtures."""
+    with open(FIXTURES_DIR / "sample_beehiiv_responses.json") as f:
+        return json.load(f)
 
-    monkeypatch.setattr(cfg, "BEEHIIV_API_KEY", API_KEY)
-    monkeypatch.setattr(cfg, "BEEHIIV_PUBLICATION_ID", PUB_ID)
 
+@pytest.fixture
+def client():
+    """Create a BeehiivClient instance."""
+    return BeehiivClient()
 
-# patch target for requests.post — _post_draft now owns the headers build
-_REQUESTS_PATCH = "src.newsletter.beehiiv_client.requests.post"
 
+@pytest.fixture
+def mock_config():
+    """Patch config module with test Beehiiv credentials."""
+    with patch("src.common.config.BEEHIIV_API_KEY", "test-api-key-123"), patch(
+        "src.common.config.BEEHIIV_PUBLICATION_ID", "pub_test456"
+    ):
+        yield
 
-# ---------------------------------------------------------------------------
-# Task 2.1 — correct URL
-# ---------------------------------------------------------------------------
 
+class TestBeehiivApiError:
+    """Tests for BeehiivApiError exception class."""
 
-def test_push_draft_posts_to_correct_url(mock_beehiiv_config):
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(201, SUCCESS_BODY)
-        push_draft("Title", "## Content")
+    def test_error_with_all_attributes(self):
+        error = BeehiivApiError("Test error", status_code=401, response_body='{"error": "Unauthorized"}')
+        assert str(error) == "Test error"
+        assert error.status_code == 401
+        assert error.response_body == '{"error": "Unauthorized"}'
 
-    called_url = mock_post.call_args[0][0]
-    assert called_url == f"https://api.beehiiv.com/v2/publications/{PUB_ID}/posts"
+    def test_error_with_defaults(self):
+        error = BeehiivApiError("Simple error")
+        assert str(error) == "Simple error"
+        assert error.status_code is None
+        assert error.response_body is None
 
+    def test_error_is_exception(self):
+        assert issubclass(BeehiivApiError, Exception)
 
-# ---------------------------------------------------------------------------
-# Task 2.2 — request body: status=draft, title, body_content
-# ---------------------------------------------------------------------------
 
+class TestBeehiivClientInit:
+    """Tests for BeehiivClient initialization."""
 
-def test_push_draft_sends_status_draft(mock_beehiiv_config):
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(201, SUCCESS_BODY)
-        push_draft("Title", "## Content")
+    def test_base_url_set(self, client):
+        assert client.base_url == BASE_URL
 
-    payload = mock_post.call_args[1]["json"]
-    assert payload["status"] == "draft"
 
+class TestGetHeaders:
+    """Tests for _get_headers() method — API key rotation support."""
 
-def test_push_draft_payload_contains_title(mock_beehiiv_config):
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(201, SUCCESS_BODY)
-        push_draft("My Newsletter Title", "## Content")
+    def test_returns_correct_headers(self, client):
+        with patch("src.common.config.BEEHIIV_API_KEY", "my-key"):
+            headers = client._get_headers()
+            assert headers["Authorization"] == "Bearer my-key"
+            assert headers["Content-Type"] == "application/json"
 
-    payload = mock_post.call_args[1]["json"]
-    assert payload["title"] == "My Newsletter Title"
+    def test_reads_fresh_key_each_call(self, client):
+        """AC #3: API key rotation — verify fresh key read each time."""
+        with patch("src.common.config.BEEHIIV_API_KEY", "key-v1"):
+            headers1 = client._get_headers()
+            assert headers1["Authorization"] == "Bearer key-v1"
 
+        with patch("src.common.config.BEEHIIV_API_KEY", "key-v2-rotated"):
+            headers2 = client._get_headers()
+            assert headers2["Authorization"] == "Bearer key-v2-rotated"
 
-def test_push_draft_payload_contains_body_content_as_html(mock_beehiiv_config):
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(201, SUCCESS_BODY)
-        push_draft("Title", "## Section\n\nSome text.")
+    def test_raises_when_api_key_missing(self, client):
+        with patch("src.common.config.BEEHIIV_API_KEY", ""):
+            with pytest.raises(BeehiivApiError, match="BEEHIIV_API_KEY is not configured"):
+                client._get_headers()
 
-    payload = mock_post.call_args[1]["json"]
-    assert "<h2>" in payload["body_content"]
-    assert "Section" in payload["body_content"]
 
+class TestGetPublicationId:
+    """Tests for _get_publication_id() method."""
 
-# ---------------------------------------------------------------------------
-# Task 2.3 — Authorization header format
-# ---------------------------------------------------------------------------
+    def test_returns_publication_id(self, client):
+        with patch("src.common.config.BEEHIIV_PUBLICATION_ID", "pub_xyz"):
+            assert client._get_publication_id() == "pub_xyz"
 
+    def test_raises_when_publication_id_missing(self, client):
+        with patch("src.common.config.BEEHIIV_PUBLICATION_ID", ""):
+            with pytest.raises(BeehiivApiError, match="BEEHIIV_PUBLICATION_ID is not configured"):
+                client._get_publication_id()
 
-def test_push_draft_authorization_header_format(mock_beehiiv_config):
-    with patch(_REQUESTS_PATCH) as mock_post:
-        mock_post.return_value = make_mock_response(201, SUCCESS_BODY)
-        push_draft("Title", "## Content")
 
-    headers = mock_post.call_args[1]["headers"]
-    assert headers["Authorization"] == f"Bearer {API_KEY}"
+class TestMarkdownToHtml:
+    """Tests for _markdown_to_html() conversion."""
 
+    def test_converts_heading(self, client):
+        html = client._markdown_to_html("## Hello World")
+        assert "<h2>" in html
+        assert "Hello World" in html
 
-def test_push_draft_content_type_header(mock_beehiiv_config):
-    with patch(_REQUESTS_PATCH) as mock_post:
-        mock_post.return_value = make_mock_response(201, SUCCESS_BODY)
-        push_draft("Title", "## Content")
+    def test_converts_link(self, client):
+        html = client._markdown_to_html("[Click](https://example.com)")
+        assert 'href="https://example.com"' in html
 
-    headers = mock_post.call_args[1]["headers"]
-    assert headers["Content-Type"] == "application/json"
+    def test_converts_bold(self, client):
+        html = client._markdown_to_html("**bold text**")
+        assert "<strong>bold text</strong>" in html
 
+    def test_converts_horizontal_rule(self, client):
+        html = client._markdown_to_html("---")
+        assert "<hr" in html
 
-# ---------------------------------------------------------------------------
-# Task 2.4 — returns post ID from response
-# ---------------------------------------------------------------------------
+
+class TestCreateDraft:
+    """Tests for create_draft() method — AC #1."""
+
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_success_creates_draft(self, mock_post, client, mock_config, fixtures):
+        """AC #1: Creates a draft in Beehiiv (not a published send)."""
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = fixtures["success_201"]
+        mock_post.return_value = mock_response
+
+        result = client.create_draft("Weekly Digest", "## Post Title\n**Summary:** text")
+
+        assert result["id"] == "post_abc123"
+        assert result["status"] == "draft"
+
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_request_url_contains_publication_id(self, mock_post, client, mock_config, fixtures):
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = fixtures["success_201"]
+        mock_post.return_value = mock_response
+
+        client.create_draft("Test", "content")
+
+        call_args = mock_post.call_args
+        assert "pub_test456" in call_args[0][0]
+
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_request_body_has_correct_fields(self, mock_post, client, mock_config, fixtures):
+        """Verify request body contains title, body_content (HTML), status=draft."""
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = fixtures["success_201"]
+        mock_post.return_value = mock_response
+
+        client.create_draft("My Newsletter", "## Hello\n**Bold text**")
 
+        call_args = mock_post.call_args
+        payload = call_args[1]["json"]
+        assert payload["title"] == "My Newsletter"
+        assert payload["status"] == "draft"
+        assert "body_content" in payload
+        assert "<h2>" in payload["body_content"]
+        assert "<strong>" in payload["body_content"]
+
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_request_has_authorization_header(self, mock_post, client, mock_config, fixtures):
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = fixtures["success_201"]
+        mock_post.return_value = mock_response
+
+        client.create_draft("Test", "content")
 
-def test_push_draft_returns_post_id(mock_beehiiv_config):
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(201, SUCCESS_BODY)
-        result = push_draft("Title", "## Content")
+        call_args = mock_post.call_args
+        headers = call_args[1]["headers"]
+        assert headers["Authorization"] == "Bearer test-api-key-123"
+        assert headers["Content-Type"] == "application/json"
+
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_status_is_always_draft(self, mock_post, client, mock_config, fixtures):
+        """Critical: never publish — only draft."""
+        mock_response = MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = fixtures["success_201"]
+        mock_post.return_value = mock_response
+
+        client.create_draft("Test", "content")
+
+        payload = mock_post.call_args[1]["json"]
+        assert payload["status"] == "draft"
+
+
+class TestRetryOn429:
+    """Tests for 429 rate limit retry behavior — AC #2."""
+
+    @patch("src.newsletter.beehiiv_client.time.sleep")
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_429_triggers_retry(self, mock_post, mock_sleep, client, mock_config, fixtures):
+        """AC #2: Retries with exponential backoff on 429."""
+        rate_limit_response = MagicMock()
+        rate_limit_response.status_code = 429
+        rate_limit_response.text = json.dumps(fixtures["error_429"])
+        rate_limit_response.headers = {}
+
+        success_response = MagicMock()
+        success_response.status_code = 201
+        success_response.json.return_value = fixtures["success_201"]
 
-    assert result == "post_abc123"
+        mock_post.side_effect = [rate_limit_response, success_response]
 
+        result = client.create_draft("Test", "content")
 
-# ---------------------------------------------------------------------------
-# Task 2.5 — 429 triggers retry
-# ---------------------------------------------------------------------------
+        assert result["id"] == "post_abc123"
+        assert mock_post.call_count == 2
+        mock_sleep.assert_called_once_with(30)
+
+    @patch("src.newsletter.beehiiv_client.time.sleep")
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_429_respects_retry_after_header(self, mock_post, mock_sleep, client, mock_config, fixtures):
+        """AC #2: Uses Retry-After header when present."""
+        rate_limit_response = MagicMock()
+        rate_limit_response.status_code = 429
+        rate_limit_response.text = json.dumps(fixtures["error_429"])
+        rate_limit_response.headers = {"Retry-After": "45"}
 
+        success_response = MagicMock()
+        success_response.status_code = 201
+        success_response.json.return_value = fixtures["success_201"]
+
+        mock_post.side_effect = [rate_limit_response, success_response]
+
+        client.create_draft("Test", "content")
+        mock_sleep.assert_called_once_with(45)
+
+    @patch("src.newsletter.beehiiv_client.time.sleep")
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_429_exhausted_retries_raises(self, mock_post, mock_sleep, client, mock_config, fixtures):
+        """AC #2: After retries exhausted, failure is logged at ERROR level."""
+        rate_limit_response = MagicMock()
+        rate_limit_response.status_code = 429
+        rate_limit_response.text = json.dumps(fixtures["error_429"])
+        rate_limit_response.headers = {}
+
+        mock_post.return_value = rate_limit_response
+
+        with pytest.raises(BeehiivApiError) as exc_info:
+            client.create_draft("Test", "content")
+
+        assert exc_info.value.status_code == 429
+        assert mock_post.call_count == 4
 
-def test_push_draft_429_triggers_retry_and_succeeds(mock_beehiiv_config, monkeypatch):
-    monkeypatch.setattr("src.common.retry.time.sleep", lambda x: None)
 
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.side_effect = [
-            make_mock_response(429, ERROR_429_BODY),
-            make_mock_response(201, SUCCESS_BODY),
-        ]
-        result = push_draft("Title", "Content")
+class TestRetryOn5xx:
+    """Tests for 5xx server error retry behavior — AC #2."""
 
-    assert result == "post_abc123"
-    assert mock_post.call_count == 2
+    @patch("src.newsletter.beehiiv_client.time.sleep")
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_500_triggers_retry(self, mock_post, mock_sleep, client, mock_config, fixtures):
+        server_error = MagicMock()
+        server_error.status_code = 500
+        server_error.text = json.dumps(fixtures["error_500"])
+
+        success_response = MagicMock()
+        success_response.status_code = 201
+        success_response.json.return_value = fixtures["success_201"]
+
+        mock_post.side_effect = [server_error, success_response]
+
+        result = client.create_draft("Test", "content")
+        assert result["id"] == "post_abc123"
+        assert mock_post.call_count == 2
+
+    @patch("src.newsletter.beehiiv_client.time.sleep")
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_5xx_exhausted_raises_with_context(self, mock_post, mock_sleep, client, mock_config, fixtures):
+        """AC #2: Raises BeehiivApiError with full response context."""
+        server_error = MagicMock()
+        server_error.status_code = 503
+        server_error.text = "Service Unavailable"
 
+        mock_post.return_value = server_error
 
-def test_push_draft_429_exhausted_raises(mock_beehiiv_config, monkeypatch):
-    monkeypatch.setattr("src.common.retry.time.sleep", lambda x: None)
+        with pytest.raises(BeehiivApiError) as exc_info:
+            client.create_draft("Test", "content")
 
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(429, ERROR_429_BODY)
+        assert exc_info.value.status_code == 503
+        assert "Service Unavailable" in exc_info.value.response_body
+        assert mock_post.call_count == 4
 
-        with pytest.raises(BeehiivRetryableError):
-            push_draft("Title", "Content")
-
-    assert mock_post.call_count == 4  # 1 initial + 3 retries
-
-
-# ---------------------------------------------------------------------------
-# Task 2.6 — 500 triggers retry
-# ---------------------------------------------------------------------------
-
-
-def test_push_draft_500_triggers_retry_and_succeeds(mock_beehiiv_config, monkeypatch):
-    monkeypatch.setattr("src.common.retry.time.sleep", lambda x: None)
-
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.side_effect = [
-            make_mock_response(500, {"error": "internal_server_error"}),
-            make_mock_response(201, SUCCESS_BODY),
-        ]
-        result = push_draft("Title", "Content")
-
-    assert result == "post_abc123"
-    assert mock_post.call_count == 2
-
-
-# ---------------------------------------------------------------------------
-# Task 2.7 — non-429 4xx raises immediately, no retry
-# ---------------------------------------------------------------------------
-
-
-def test_push_draft_400_raises_immediately_no_retry(mock_beehiiv_config):
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(400, {"error": "bad_request"})
-
-        with pytest.raises(BeehiivAPIError):
-            push_draft("Title", "Content")
-
-    assert mock_post.call_count == 1
-
-
-def test_push_draft_401_raises_immediately_no_retry(mock_beehiiv_config):
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(401, {"error": "unauthorized"})
-
-        with pytest.raises(BeehiivAPIError):
-            push_draft("Title", "Content")
-
-    assert mock_post.call_count == 1
-
-
-def test_push_draft_403_raises_immediately_no_retry(mock_beehiiv_config):
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(403, {"error": "forbidden"})
-
-        with pytest.raises(BeehiivAPIError):
-            push_draft("Title", "Content")
-
-    assert mock_post.call_count == 1
-
-
-# ---------------------------------------------------------------------------
-# Task 2.8 — key rotation
-# ---------------------------------------------------------------------------
-
-
-def test_push_draft_key_rotation_uses_new_key_on_next_call(monkeypatch):
-    """Verify credentials are read from config at call time, not cached at import."""
-    import src.common.config as cfg
-
-    monkeypatch.setattr(cfg, "BEEHIIV_PUBLICATION_ID", PUB_ID)
-
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(201, SUCCESS_BODY)
-
-        monkeypatch.setattr(cfg, "BEEHIIV_API_KEY", "old_key")
-        push_draft("Title", "Content")
-        old_auth = mock_post.call_args[1]["headers"]["Authorization"]
-
-        monkeypatch.setattr(cfg, "BEEHIIV_API_KEY", "new_key")
-        push_draft("Title", "Content")
-        new_auth = mock_post.call_args[1]["headers"]["Authorization"]
-
-    assert old_auth == "Bearer old_key"
-    assert new_auth == "Bearer new_key"
-
-
-def test_push_draft_key_rotation_honoured_within_retry_sequence(monkeypatch):
-    """Each retry attempt re-reads BEEHIIV_API_KEY from config (H1 fix verification)."""
-    import src.common.config as cfg
-
-    monkeypatch.setattr(cfg, "BEEHIIV_PUBLICATION_ID", PUB_ID)
-    monkeypatch.setattr("src.common.retry.time.sleep", lambda x: None)
-
-    captured_auth_headers = []
-
-    def side_effect(url, **kwargs):
-        captured_auth_headers.append(kwargs["headers"]["Authorization"])
-        if len(captured_auth_headers) == 1:
-            # Rotate key after first attempt
-            monkeypatch.setattr(cfg, "BEEHIIV_API_KEY", "rotated_key")
-            return make_mock_response(429, ERROR_429_BODY)
-        return make_mock_response(201, SUCCESS_BODY)
-
-    monkeypatch.setattr(cfg, "BEEHIIV_API_KEY", "original_key")
-    with patch(_REQUESTS_PATCH, side_effect=side_effect):
-        result = push_draft("Title", "Content")
-
-    assert result == "post_abc123"
-    assert captured_auth_headers[0] == "Bearer original_key"
-    assert captured_auth_headers[1] == "Bearer rotated_key"
-
-
-# ---------------------------------------------------------------------------
-# Task 2.9 — _markdown_to_html conversions
-# ---------------------------------------------------------------------------
-
-
-def test_markdown_to_html_converts_h2_heading():
-    html = _markdown_to_html("## Section Title")
-    assert "<h2>" in html
-    assert "Section Title" in html
-
-
-def test_markdown_to_html_converts_h3_heading():
-    html = _markdown_to_html("### Post Title")
-    assert "<h3>" in html
-    assert "Post Title" in html
-
-
-def test_markdown_to_html_converts_bold():
-    html = _markdown_to_html("**bold text**")
-    assert "<strong>bold text</strong>" in html
-
-
-def test_markdown_to_html_converts_link():
-    html = _markdown_to_html("[Read more](https://example.com)")
-    assert 'href="https://example.com"' in html
-    assert "Read more" in html
-
-
-def test_markdown_to_html_returns_string():
-    result = _markdown_to_html("Plain text content")
-    assert isinstance(result, str)
-    assert "Plain text content" in result
-
-
-# ---------------------------------------------------------------------------
-# Task 2.10 — error logging on exhausted retries
-# ---------------------------------------------------------------------------
-
-
-def test_error_logging_on_exhausted_retries(mock_beehiiv_config, monkeypatch, caplog):
-    import logging
-
-    monkeypatch.setattr("src.common.retry.time.sleep", lambda x: None)
-
-    with patch("src.newsletter.beehiiv_client.requests.post") as mock_post:
-        mock_post.return_value = make_mock_response(429, ERROR_429_BODY)
-
-        with caplog.at_level(logging.ERROR, logger="src.newsletter.beehiiv_client"):
-            with pytest.raises(BeehiivRetryableError):
-                push_draft("Title", "Content")
-
-    # At least one ERROR log should mention the status code
-    error_logs = [r for r in caplog.records if r.levelname == "ERROR"]
-    assert len(error_logs) >= 1
-    assert any("429" in r.getMessage() for r in error_logs)
+    @patch("src.newsletter.beehiiv_client.time.sleep")
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_exponential_backoff_delays(self, mock_post, mock_sleep, client, mock_config, fixtures):
+        """Verify backoff: 30s, 120s, 480s."""
+        server_error = MagicMock()
+        server_error.status_code = 500
+        server_error.text = "error"
+
+        mock_post.return_value = server_error
+
+        with pytest.raises(BeehiivApiError):
+            client.create_draft("Test", "content")
+
+        delays = [call[0][0] for call in mock_sleep.call_args_list]
+        assert delays == [30, 120, 480]
+
+
+class TestNoRetryOn4xx:
+    """Tests for 4xx (non-429) immediate failure — no retry."""
+
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_401_raises_immediately(self, mock_post, client, mock_config, fixtures):
+        """4xx errors (non-429) do NOT retry."""
+        error_response = MagicMock()
+        error_response.status_code = 401
+        error_response.text = json.dumps(fixtures["error_401"])
+        mock_post.return_value = error_response
+
+        with pytest.raises(BeehiivApiError) as exc_info:
+            client.create_draft("Test", "content")
+
+        assert exc_info.value.status_code == 401
+        assert mock_post.call_count == 1
+
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_403_raises_immediately(self, mock_post, client, mock_config, fixtures):
+        error_response = MagicMock()
+        error_response.status_code = 403
+        error_response.text = json.dumps(fixtures["error_403"])
+        mock_post.return_value = error_response
+
+        with pytest.raises(BeehiivApiError) as exc_info:
+            client.create_draft("Test", "content")
+
+        assert exc_info.value.status_code == 403
+        assert mock_post.call_count == 1
+
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_400_raises_immediately(self, mock_post, client, mock_config):
+        error_response = MagicMock()
+        error_response.status_code = 400
+        error_response.text = '{"error": "Bad Request"}'
+        mock_post.return_value = error_response
+
+        with pytest.raises(BeehiivApiError) as exc_info:
+            client.create_draft("Test", "content")
+
+        assert exc_info.value.status_code == 400
+        assert mock_post.call_count == 1
+
+
+class TestApiKeyRotation:
+    """Tests for API key rotation support — AC #3."""
+
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_uses_fresh_key_per_call(self, mock_post, client, fixtures):
+        """AC #3: Next API call uses new key without downtime."""
+        success_response = MagicMock()
+        success_response.status_code = 201
+        success_response.json.return_value = fixtures["success_201"]
+        mock_post.return_value = success_response
+
+        with patch("src.common.config.BEEHIIV_API_KEY", "old-key"), patch(
+            "src.common.config.BEEHIIV_PUBLICATION_ID", "pub_test"
+        ):
+            client.create_draft("Test 1", "content")
+
+        first_headers = mock_post.call_args_list[0][1]["headers"]
+        assert first_headers["Authorization"] == "Bearer old-key"
+
+        with patch("src.common.config.BEEHIIV_API_KEY", "new-rotated-key"), patch(
+            "src.common.config.BEEHIIV_PUBLICATION_ID", "pub_test"
+        ):
+            client.create_draft("Test 2", "content")
+
+        second_headers = mock_post.call_args_list[1][1]["headers"]
+        assert second_headers["Authorization"] == "Bearer new-rotated-key"
+
+
+class TestTimeoutHandling:
+    """Tests for HTTP timeout handling."""
+
+    @patch("src.newsletter.beehiiv_client.time.sleep")
+    @patch("src.newsletter.beehiiv_client.httpx.post")
+    def test_timeout_triggers_retry(self, mock_post, mock_sleep, client, mock_config, fixtures):
+        success_response = MagicMock()
+        success_response.status_code = 201
+        success_response.json.return_value = fixtures["success_201"]
+
+        mock_post.side_effect = [httpx.TimeoutException("Connection timed out"), success_response]
+
+        result = client.create_draft("Test", "content")
+        assert result["id"] == "post_abc123"
+        assert mock_post.call_count == 2

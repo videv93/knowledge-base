@@ -1,125 +1,217 @@
-"""Single entry point for all Beehiiv API operations.
+"""Beehiiv API client for newsletter draft publishing.
 
-Reads credentials from config at call time for zero-downtime key rotation.
-Drafts are always pushed with status="draft" — never "confirmed" to prevent
-accidental newsletter sends to subscribers.
-
-Architecture compliance:
-- Single entry point: only module allowed to call the Beehiiv API
-- Credentials read from src.common.config at call time (supports key rotation without restart)
-- Retry on 429/5xx via src.common.retry.retry_with_backoff
-- Immediate raise on 4xx (excluding 429) — no retry for client errors
+Single entry point for all Beehiiv API operations.
+Pushes formatted newsletter content as drafts to Beehiiv for operator review.
 """
 
 import logging
+import time
 
-import markdown as md
-import requests
-
-from src.common.retry import retry_with_backoff
+import httpx
+import markdown
 
 logger = logging.getLogger(__name__)
 
-BEEHIIV_API_BASE = "https://api.beehiiv.com/v2"
+BASE_URL = "https://api.beehiiv.com/v2"
+DEFAULT_TIMEOUT = 30  # seconds
 
 
-class BeehiivAPIError(Exception):
-    """Non-retryable Beehiiv API error (4xx excluding 429)."""
+class BeehiivApiError(Exception):
+    """Raised when a Beehiiv API call fails in a non-retryable way."""
+
+    def __init__(self, message: str, status_code: int | None = None, response_body: str | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.response_body = response_body
 
 
-class BeehiivRetryableError(Exception):
-    """Retryable Beehiiv API error (429 rate limit or 5xx server error)."""
+class BeehiivClient:
+    """Client for Beehiiv newsletter API.
 
-
-def _markdown_to_html(content: str) -> str:
-    """Convert markdown newsletter content to HTML for Beehiiv body_content field.
-
-    Args:
-        content: Markdown string (e.g. output of content_formatter.generate_newsletter_content)
-
-    Returns:
-        str: HTML string suitable for Beehiiv body_content field
+    Reads API credentials fresh on each call to support key rotation
+    without pipeline downtime (NFR9).
     """
-    return md.markdown(content, extensions=["extra"])
 
+    def __init__(self):
+        self.base_url = BASE_URL
 
-@retry_with_backoff(exceptions=(BeehiivRetryableError,))
-def _post_draft(url: str, payload: dict) -> dict:
-    """Make a single POST attempt to the Beehiiv API.
+    def _get_headers(self) -> dict:
+        """Build request headers with fresh API key from config.
 
-    Reads credentials from config on every call so each retry attempt picks up
-    any key rotation that occurred since the previous attempt.
+        Reads BEEHIIV_API_KEY on every call so the operator can rotate
+        keys without restarting the pipeline.
+        """
+        from src.common import config
 
-    Separated from push_draft so retry_with_backoff decorator only wraps the HTTP call.
+        if not config.BEEHIIV_API_KEY:
+            raise BeehiivApiError("BEEHIIV_API_KEY is not configured. Set it in your .env file or environment.")
+        return {
+            "Authorization": f"Bearer {config.BEEHIIV_API_KEY}",
+            "Content-Type": "application/json",
+        }
 
-    Raises:
-        BeehiivRetryableError: On HTTP 429 or 5xx — will be retried by decorator
-        BeehiivAPIError: On HTTP 4xx (excluding 429) — raised immediately, no retry
-    """
-    from src.common import config  # read fresh on every attempt for key rotation support
+    def _get_publication_id(self) -> str:
+        """Read publication ID fresh from config."""
+        from src.common import config
 
-    headers = {
-        "Authorization": f"Bearer {config.BEEHIIV_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    response = requests.post(url, json=payload, headers=headers, timeout=30)
+        if not config.BEEHIIV_PUBLICATION_ID:
+            raise BeehiivApiError(
+                "BEEHIIV_PUBLICATION_ID is not configured. Set it in your .env file or environment."
+            )
+        return config.BEEHIIV_PUBLICATION_ID
 
-    if 200 <= response.status_code < 300:
-        return response.json()
+    def _markdown_to_html(self, md_content: str) -> str:
+        """Convert markdown content to HTML for Beehiiv API.
 
-    if response.status_code == 429 or response.status_code >= 500:
-        logger.error(
-            "Beehiiv API retryable error: url=%s status=%d body=%.500s",
-            url,
-            response.status_code,
-            response.text,
-        )
-        raise BeehiivRetryableError(
-            f"Beehiiv API returned {response.status_code}: {response.text[:500]}"
-        )
+        Beehiiv requires HTML in the body_content field; it does not
+        accept raw markdown.
+        """
+        return markdown.markdown(md_content, extensions=["extra"])
 
-    # 4xx (non-429): client error — raise immediately without retry
-    logger.error(
-        "Beehiiv API client error: url=%s status=%d body=%.500s",
-        url,
-        response.status_code,
-        response.text,
-    )
-    raise BeehiivAPIError(
-        f"Beehiiv API returned {response.status_code}: {response.text[:500]}"
-    )
+    def create_draft(self, title: str, content: str) -> dict:
+        """Create a newsletter draft in Beehiiv.
 
+        Converts markdown content to HTML, then pushes to Beehiiv API
+        as a draft post. The operator reviews and publishes in Beehiiv UI.
 
-def push_draft(title: str, body_content: str) -> str:
-    """Push newsletter as a draft to Beehiiv.
+        Args:
+            title: Newsletter issue title (e.g., "Weekly Knowledge Digest - 2026-03-20").
+            content: Formatted markdown content from content_formatter.
 
-    Reads BEEHIIV_API_KEY and BEEHIIV_PUBLICATION_ID from config at call time,
-    enabling zero-downtime key rotation — update the env var and the next call
-    uses the new key without any code changes or pipeline restart.
+        Returns:
+            Dict with draft details: {"id": str, "status": "draft"}.
 
-    Args:
-        title: Newsletter subject/heading shown in Beehiiv UI
-        body_content: Markdown string from content_formatter.generate_newsletter_content()
-                      (converted to HTML internally before sending to Beehiiv)
+        Raises:
+            BeehiivApiError: On non-retryable API errors (4xx except 429).
+        """
+        publication_id = self._get_publication_id()
+        url = f"{self.base_url}/publications/{publication_id}/posts"
+        headers = self._get_headers()
 
-    Returns:
-        str: Beehiiv post ID (e.g. "post_abc123") for the created draft
+        html_content = self._markdown_to_html(content)
 
-    Raises:
-        BeehiivAPIError: Non-retryable 4xx API failure
-        BeehiivRetryableError: All retries exhausted on 429/5xx failure
-    """
-    from src.common import config  # lazy import — avoids triggering config validation at module load
+        payload = {
+            "title": title,
+            "body_content": html_content,
+            "status": "draft",
+        }
 
-    pub_id = config.BEEHIIV_PUBLICATION_ID
-    url = f"{BEEHIIV_API_BASE}/publications/{pub_id}/posts"
-    payload = {
-        "title": title,
-        "body_content": _markdown_to_html(body_content),
-        "status": "draft",
-    }
+        logger.debug("Creating Beehiiv draft: %s", title[:80])
 
-    response_data = _post_draft(url, payload)
-    post_id = response_data["data"]["id"]
-    logger.info("Created Beehiiv draft: post_id=%s title=%s", post_id, title)
-    return post_id
+        return self._post_with_retry(url, headers, payload)
+
+    def _post_with_retry(self, url: str, headers: dict, payload: dict) -> dict:
+        """POST to Beehiiv API with retry on 429/5xx errors.
+
+        Implements retry with exponential backoff matching architecture
+        standard: 3 attempts at 30s, 120s, 480s intervals.
+
+        Non-retryable errors (4xx except 429) raise immediately.
+        """
+        max_retries = 3
+        base_delay = 30
+
+        last_exception = None
+        for attempt in range(max_retries + 1):
+            try:
+                response = httpx.post(url, headers=headers, json=payload, timeout=DEFAULT_TIMEOUT)
+
+                if response.status_code == 201:
+                    data = response.json()
+                    draft_id = data.get("data", {}).get("id", "unknown")
+                    logger.info(
+                        "Draft created successfully",
+                        extra={"draft_id": draft_id, "title": payload["title"][:80]},
+                    )
+                    return {"id": draft_id, "status": "draft"}
+
+                # 429 rate limit — retry
+                if response.status_code == 429:
+                    retry_after = response.headers.get("Retry-After")
+                    error = BeehiivApiError(
+                        f"Rate limited (429): {response.text}",
+                        status_code=429,
+                        response_body=response.text,
+                    )
+                    if attempt < max_retries:
+                        delay = int(retry_after) if retry_after else base_delay * (4**attempt)
+                        logger.warning(
+                            "Rate limited, retry %d/%d after %ds",
+                            attempt + 1,
+                            max_retries,
+                            delay,
+                        )
+                        time.sleep(delay)
+                        last_exception = error
+                        continue
+                    raise error
+
+                # 5xx server error — retry
+                if response.status_code >= 500:
+                    error = BeehiivApiError(
+                        f"Server error ({response.status_code}): {response.text}",
+                        status_code=response.status_code,
+                        response_body=response.text,
+                    )
+                    if attempt < max_retries:
+                        delay = base_delay * (4**attempt)
+                        logger.warning(
+                            "Server error %d, retry %d/%d after %ds",
+                            response.status_code,
+                            attempt + 1,
+                            max_retries,
+                            delay,
+                        )
+                        time.sleep(delay)
+                        last_exception = error
+                        continue
+                    raise error
+
+                # 4xx (non-429) — do NOT retry, raise immediately
+                logger.error(
+                    "Beehiiv API error %d: %s",
+                    response.status_code,
+                    response.text,
+                )
+                raise BeehiivApiError(
+                    f"Client error ({response.status_code}): {response.text}",
+                    status_code=response.status_code,
+                    response_body=response.text,
+                )
+
+            except httpx.TimeoutException as e:
+                error = BeehiivApiError(f"Request timed out: {e}")
+                if attempt < max_retries:
+                    delay = base_delay * (4**attempt)
+                    logger.warning(
+                        "Timeout, retry %d/%d after %ds: %s",
+                        attempt + 1,
+                        max_retries,
+                        delay,
+                        str(e),
+                    )
+                    time.sleep(delay)
+                    last_exception = error
+                    continue
+                raise error from e
+
+            except httpx.HTTPError as e:
+                error = BeehiivApiError(f"HTTP error: {e}")
+                if attempt < max_retries:
+                    delay = base_delay * (4**attempt)
+                    logger.warning(
+                        "HTTP error, retry %d/%d after %ds: %s",
+                        attempt + 1,
+                        max_retries,
+                        delay,
+                        str(e),
+                    )
+                    time.sleep(delay)
+                    last_exception = error
+                    continue
+                raise error from e
+
+        # Should not reach here, but safety net
+        if last_exception:
+            raise last_exception
+        raise BeehiivApiError("Unexpected retry loop exit")

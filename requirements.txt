@@ -13,3 +13,10 @@ dbt-postgres==1.10.0
 # Dev/test dependencies
 pytest==9.0.2
 ruff==0.15.2
+
+# Crawler
+crawl4ai==0.6.3
+
+# Newsletter
+markdown>=3.7
+httpx>=0.28.0

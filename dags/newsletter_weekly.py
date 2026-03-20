@@ -1,7 +1,7 @@
-"""Weekly newsletter generation and Beehiiv draft push DAG.
+"""Weekly newsletter generation DAG.
 
-Thin orchestrator: runs dbt to refresh mart_newsletter_candidates,
-formats newsletter content, pushes draft to Beehiiv, notifies operator.
+Thin orchestrator that refreshes newsletter candidates via dbt, formats
+content, pushes a draft to Beehiiv, and notifies the operator.
 All business logic lives in src/newsletter/ modules.
 """
 
@@ -17,80 +17,118 @@ from common import DEFAULT_ARGS, DEFAULT_TAGS
 
 logger = logging.getLogger(__name__)
 
+# Resolve dbt project path relative to the repo root
 _DBT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "dbt")
 
 
-def _format_newsletter_content(**kwargs):
-    """Fetch candidates, format newsletter, push content to XCom."""
-    from src.common.db import get_connection
-    from src.newsletter.content_formatter import generate_newsletter_content
+def _format_newsletter(**kwargs):
+    """Fetch ranked candidates, interleave by category, and format as markdown."""
+    from src.newsletter.content_formatter import (
+        fetch_newsletter_candidates,
+        format_newsletter_content,
+        group_by_category,
+    )
 
-    with get_connection() as conn:
-        content = generate_newsletter_content(conn)
+    ti = kwargs["ti"]
 
-    if not content:
-        raise ValueError("generate_newsletter_content returned empty content")
+    candidates = fetch_newsletter_candidates()
+    if not candidates:
+        logger.warning("No candidates found for this week's newsletter")
+        ti.xcom_push(key="newsletter_content", value="")
+        ti.xcom_push(key="candidate_count", value=0)
+        return
 
-    logger.info("Newsletter content formatted: %d characters", len(content))
-    return content  # Airflow stores return value as XCom
+    ordered = group_by_category(candidates)
+    content = format_newsletter_content(ordered)
+
+    ti.xcom_push(key="newsletter_content", value=content)
+    ti.xcom_push(key="candidate_count", value=len(candidates))
+    logger.info(
+        "Newsletter formatted: %d candidates, %d chars",
+        len(candidates),
+        len(content),
+    )
 
 
 def _push_to_beehiiv(**kwargs):
-    """Pull formatted content from XCom, push draft to Beehiiv, return post ID."""
-    from src.newsletter.beehiiv_client import push_draft
+    """Push formatted newsletter draft to Beehiiv API."""
+    from datetime import date
 
     ti = kwargs["ti"]
-    content = ti.xcom_pull(task_ids="format_newsletter_content")
+    content = ti.xcom_pull(task_ids="format_newsletter", key="newsletter_content")
+
     if not content:
-        raise ValueError("No newsletter content in XCom — format_newsletter_content may have failed")
+        logger.info("No newsletter content to push — skipping Beehiiv draft creation")
+        ti.xcom_push(key="draft_id", value=None)
+        return
 
-    run_date = kwargs["ds"]  # Airflow execution date as YYYY-MM-DD string
-    title = f"Weekly Knowledge Digest — Week of {run_date}"
+    from src.newsletter.beehiiv_client import BeehiivClient
 
-    post_id = push_draft(title=title, body_content=content)
-    logger.info("Beehiiv draft created: post_id=%s, title=%r", post_id, title)
-    return post_id
+    title = f"Weekly Knowledge Digest - {date.today().isoformat()}"
+    client = BeehiivClient()
+    result = client.create_draft(title=title, content=content)
+
+    draft_id = result.get("id", "unknown")
+    ti.xcom_push(key="draft_id", value=draft_id)
+    ti.xcom_push(key="draft_title", value=title)
+    logger.info("Beehiiv draft created: id=%s, title=%s", draft_id, title)
 
 
-def _notify_draft_ready(**kwargs):
-    """Log draft ready notification with Beehiiv post ID."""
+def _notify_operator(**kwargs):
+    """Notify operator that a newsletter draft is ready for review."""
     ti = kwargs["ti"]
-    post_id = ti.xcom_pull(task_ids="push_to_beehiiv")
-    if not post_id:
-        raise ValueError("No Beehiiv post ID in XCom — push_to_beehiiv may have failed")
-    run_date = kwargs["ds"]
+    draft_id = ti.xcom_pull(task_ids="push_to_beehiiv", key="draft_id")
+    draft_title = ti.xcom_pull(task_ids="push_to_beehiiv", key="draft_title")
+    candidate_count = ti.xcom_pull(task_ids="format_newsletter", key="candidate_count") or 0
 
-    logger.info(
-        "Newsletter draft ready for review: post_id=%s, week_of=%s — "
-        "Review and approve in Beehiiv UI before sending.",
-        post_id,
-        run_date,
-    )
+    if not draft_id:
+        message = "No newsletter generated this week — no qualifying posts found."
+    else:
+        message = (
+            f"Newsletter draft ready for review!\n"
+            f"Title: {draft_title}\n"
+            f"Posts included: {candidate_count}\n"
+            f"Draft ID: {draft_id}\n"
+            f"Action: Review and approve in Beehiiv UI"
+        )
+
+    logger.info(message)
+
+    slack_url = os.environ.get("SLACK_WEBHOOK_URL", "")
+    if slack_url:
+        try:
+            import httpx
+
+            httpx.post(slack_url, json={"text": message}, timeout=10)
+            logger.info("Slack notification sent")
+        except Exception:
+            logger.warning("Failed to send Slack notification", exc_info=True)
+    else:
+        logger.info("No Slack webhook configured — log-only notification")
 
 
 with DAG(
     dag_id="newsletter_weekly",
     default_args=DEFAULT_ARGS,
-    schedule="@weekly",
-    start_date=datetime(2026, 1, 1),
+    schedule="0 8 * * 1",
+    start_date=datetime(2026, 3, 1),
     catchup=False,
     max_active_runs=1,
-    tags=DEFAULT_TAGS + ["newsletter", "beehiiv"],
-    description="Weekly newsletter draft generation and Beehiiv push",
+    tags=DEFAULT_TAGS + ["newsletter", "weekly"],
+    description="Weekly newsletter generation: dbt refresh, content formatting, Beehiiv draft push",
 ) as dag:
-    run_dbt_models = BashOperator(
-        task_id="run_dbt_models",
-        bash_command=f"dbt run --project-dir {_DBT_DIR} --profiles-dir {_DBT_DIR} --select mart_newsletter_candidates",
+
+    refresh_newsletter_candidates = BashOperator(
+        task_id="refresh_newsletter_candidates",
+        bash_command=(
+            f"dbt run --select mart_newsletter_candidates --project-dir {_DBT_DIR} --profiles-dir {_DBT_DIR} && "
+            f"dbt test --select mart_newsletter_candidates --project-dir {_DBT_DIR} --profiles-dir {_DBT_DIR}"
+        ),
     )
 
-    test_dbt_models = BashOperator(
-        task_id="test_dbt_models",
-        bash_command=f"dbt test --project-dir {_DBT_DIR} --profiles-dir {_DBT_DIR} --select mart_newsletter_candidates",
-    )
-
-    format_newsletter_content = PythonOperator(
-        task_id="format_newsletter_content",
-        python_callable=_format_newsletter_content,
+    format_newsletter = PythonOperator(
+        task_id="format_newsletter",
+        python_callable=_format_newsletter,
     )
 
     push_to_beehiiv = PythonOperator(
@@ -98,9 +136,14 @@ with DAG(
         python_callable=_push_to_beehiiv,
     )
 
-    notify_draft_ready = PythonOperator(
-        task_id="notify_draft_ready",
-        python_callable=_notify_draft_ready,
+    notify_operator = PythonOperator(
+        task_id="notify_operator",
+        python_callable=_notify_operator,
     )
 
-    run_dbt_models >> test_dbt_models >> format_newsletter_content >> push_to_beehiiv >> notify_draft_ready
+    (
+        refresh_newsletter_candidates
+        >> format_newsletter
+        >> push_to_beehiiv
+        >> notify_operator
+    )

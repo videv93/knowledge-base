@@ -324,7 +324,7 @@ class TestGenerateNewsletterContent:
         assert isinstance(content_formatter.generate_newsletter_content(conn), str)
 
     def test_integration_with_mocked_db(self):
-        """Full pipeline integration: fetch → group → format with mock conn."""
+        """Full pipeline integration: fetch -> group -> format with mock conn."""
         rows = [
             _make_row(post_id=1, title="Pipeline Post", category="Data Engineering",
                       author_name="Alice", source_name="Data Blog",
