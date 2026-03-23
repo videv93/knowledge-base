@@ -165,6 +165,19 @@ def _log_run_summary(**kwargs):
     }
     logger.info("Daily pipeline complete: %s", json.dumps(summary, indent=2))
 
+    # Log DLQ health summary for operational visibility
+    try:
+        from src.common.dlq import get_dlq_summary
+
+        dlq = get_dlq_summary()
+        logger.info(
+            "DLQ health: %d unresolved entries — %s",
+            dlq["total_unresolved"],
+            dlq["by_stage"] if dlq["by_stage"] else "none",
+        )
+    except Exception as exc:
+        logger.warning("Failed to retrieve DLQ summary: %s", exc)
+
     # Cleanup temp dir created by _generate_vault_notes
     tmp_root = ti.xcom_pull(task_ids="generate_vault_notes", key="tmp_root_dir")
     if tmp_root:

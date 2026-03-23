@@ -86,3 +86,40 @@ def ingest_posts(source: BlogSource, entries: list[dict]) -> dict:
         "duplicate_count": duplicate_count,
         "failure_count": failure_count,
     }
+
+
+def reingest_by_url(url: str) -> None:
+    """Attempt to reprocess a DLQ ingestion failure for the given post URL.
+
+    MVP implementation: checks if the post already exists in raw_blog_posts.
+    If found, the original ingestion succeeded (DLQ entry is a false positive) —
+    logs INFO and returns normally so reprocess_entry can mark it resolved.
+    If not found, raw RSS data is gone and cannot be re-ingested without a live
+    feed — raises LookupError so reprocess_entry records the failure.
+
+    Args:
+        url: The post URL from the DLQ entry's post_reference field.
+
+    Raises:
+        LookupError: if the post is not in raw_blog_posts (cannot re-ingest).
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id FROM raw_blog_posts WHERE url = %s LIMIT 1",
+                (url,),
+            )
+            row = cur.fetchone()
+
+    if row is not None:
+        logger.info(
+            "Post %s found in raw_blog_posts — ingestion succeeded, marking resolved",
+            url,
+        )
+        return
+
+    logger.warning(
+        "Post %s not found in raw_blog_posts — raw RSS data gone, cannot re-ingest",
+        url,
+    )
+    raise LookupError(f"Post not found in raw_blog_posts for URL: {url}")

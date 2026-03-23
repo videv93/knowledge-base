@@ -44,6 +44,10 @@ VAULT_REPO_URL = os.environ.get("VAULT_REPO_URL", "")
 VAULT_REPO_SSH_KEY_PATH = os.environ.get("VAULT_REPO_SSH_KEY_PATH", "")
 VAULT_LOCAL_PATH = os.environ.get("VAULT_LOCAL_PATH", "/tmp/vault-clone")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
+
+# Optional — alerting (email + Slack). Leave blank to disable.
+ALERT_EMAIL = os.environ.get("ALERT_EMAIL") or None
+SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL") or None
 try:
     CLAUDE_CONCURRENCY = int(os.environ.get("CLAUDE_CONCURRENCY", "4"))
 except ValueError:

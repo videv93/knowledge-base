@@ -1,11 +1,12 @@
 """Shared DAG defaults applied to all pipeline DAGs.
 
-All DAGs should import DEFAULT_ARGS and on_failure_callback from this module.
+All DAGs should import DEFAULT_ARGS and DEFAULT_TAGS from this module.
 
-Email alerting requires Airflow SMTP configuration in airflow.cfg or env vars:
-  AIRFLOW__SMTP__SMTP_HOST, AIRFLOW__SMTP__SMTP_PORT, etc.
-Slack alerting can be added via SlackWebhookOperator in on_failure_callback
-when SLACK_WEBHOOK_URL env var is configured.
+Failure alerting is wired via on_failure_callback → src.common.alerting.send_failure_alert:
+  - Email: set ALERT_EMAIL env var (uses local SMTP)
+  - Slack: set SLACK_WEBHOOK_URL env var (uses webhook POST)
+  - Airflow native email_on_failure: set AIRFLOW_ALERT_EMAILS (comma-separated)
+All alerting channels are optional — gracefully skipped if not configured.
 """
 
 import logging
@@ -14,20 +15,16 @@ from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
-# Operator email list for failure alerts (comma-separated in env var)
-ALERT_EMAILS = [
-    e.strip()
-    for e in os.environ.get("AIRFLOW_ALERT_EMAILS", "").split(",")
-    if e.strip()
-]
+# Read directly from env — DAG config, not business logic. Config boundary applies to src/ only.
+ALERT_EMAILS = [e.strip() for e in os.environ.get("AIRFLOW_ALERT_EMAILS", "").split(",") if e.strip()]
 
 
 def on_failure_callback(context):
-    """Log task failure details for alerting and debugging.
+    """Log task failure details and dispatch email/Slack alerts.
 
-    Logs structured error context. Email alerts are handled by Airflow's
-    built-in email_on_failure mechanism. Slack integration is available
-    when SLACK_WEBHOOK_URL is configured in the Airflow environment.
+    Logs structured error context. Additional alerting (email via ALERT_EMAIL,
+    Slack via SLACK_WEBHOOK_URL) is dispatched via src.common.alerting.
+    Alerting failures are swallowed — they must not block pipeline operations.
     """
     logger.error(
         "Task failed: dag_id=%s, task_id=%s, execution_date=%s, exception=%s",
@@ -36,6 +33,9 @@ def on_failure_callback(context):
         context["execution_date"],
         context.get("exception", "Unknown"),
     )
+    from src.common.alerting import send_failure_alert
+
+    send_failure_alert(context)
 
 
 DEFAULT_ARGS = {

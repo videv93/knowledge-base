@@ -268,3 +268,47 @@ class TestProcessAllUnsummarized:
         assert result.succeeded == 2
         assert result.failed == 1
         assert result.skipped == 0
+
+
+# ---------------------------------------------------------------------------
+# process_single_post (Story 6.1)
+# ---------------------------------------------------------------------------
+
+def _make_mock_conn(fetchone_row=None):
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = fetchone_row
+    mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+    mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+    return mock_conn, mock_cursor
+
+
+def test_process_single_post_raises_on_missing_post_id():
+    """process_single_post raises LookupError if post_id not in raw_blog_posts."""
+    mock_conn, _ = _make_mock_conn(fetchone_row=None)
+
+    with patch("src.summarization.summary_processor.get_connection", return_value=mock_conn):
+        from src.summarization.summary_processor import process_single_post
+
+        with pytest.raises(LookupError, match="not found in raw_blog_posts"):
+            process_single_post(9999)
+
+
+def test_process_single_post_skips_already_summarized():
+    """process_single_post returns without calling Claude if summary already exists."""
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc)
+    # Row includes summary_id (not None) → already summarized
+    row = (1, 1, "Title", "Body", "https://example.com", now, "Author", now, 42)
+    mock_conn, mock_cursor = _make_mock_conn(fetchone_row=row)
+
+    with patch("src.summarization.summary_processor.get_connection", return_value=mock_conn):
+        with patch("src.summarization.summary_processor.ClaudeClient") as mock_claude:
+            from src.summarization.summary_processor import process_single_post
+
+            process_single_post(1)
+
+    mock_claude.assert_not_called()

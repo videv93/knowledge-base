@@ -12,6 +12,7 @@ import os
 import tempfile
 from collections import defaultdict
 from pathlib import Path
+from typing import Optional
 
 from slugify import slugify
 
@@ -260,6 +261,70 @@ def _build_sources_by_author(posts: list[dict], sources: list[dict]) -> dict[int
         author_id: [source_lookup[sid] for sid in sids if sid in source_lookup]
         for author_id, sids in author_source_ids.items()
     }
+
+
+def generate_note_for_post(post_id: int, output_dir: Optional[Path] = None) -> Path:
+    """Generate a single vault note for the given post ID.
+
+    Queries mart_posts for the post, renders the note using the existing template
+    machinery, and writes it to output_dir/posts/{category}/{slug}.md.
+
+    Uses existing slug generation logic — does NOT duplicate it.
+
+    Args:
+        post_id: The raw_blog_posts.id (also mart_posts.id) to generate a note for.
+        output_dir: Directory to write the note into. Defaults to a temp directory.
+
+    Returns:
+        Path of the written note file.
+
+    Raises:
+        LookupError: if post_id is not found in mart_posts.
+    """
+    from src.common import db
+    import tempfile
+
+    with db.get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, source_id, source_name, category, title, url,
+                       author_name, author_id, publication_date, summary_text,
+                       tags, difficulty_classification
+                FROM mart_posts
+                WHERE id = %s
+                """,
+                (post_id,),
+            )
+            row = cur.fetchone()
+
+    if row is None:
+        raise LookupError(f"Post {post_id} not found in mart_posts")
+
+    columns = [
+        "id", "source_id", "source_name", "category", "title", "url",
+        "author_name", "author_id", "publication_date", "summary_text",
+        "tags", "difficulty_classification",
+    ]
+    post = dict(zip(columns, row))
+
+    if output_dir is None:
+        output_dir = Path(tempfile.mkdtemp()) / "generated"
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Use existing slug generation logic (canonical location: this file)
+    base_slug = slugify_title(post.get("title", ""))
+    category_slug = slugify_title(post.get("category", "uncategorized"))
+    note_path = output_dir / "posts" / category_slug / f"{base_slug}.md"
+
+    content = render_post_note(post)
+    _write_note(note_path, content)
+
+    logger.info(
+        "generate_note_for_post: wrote %s",
+        note_path.relative_to(output_dir) if output_dir in note_path.parents else note_path,
+    )
+    return note_path
 
 
 def generate_all(output_dir: Path) -> dict:

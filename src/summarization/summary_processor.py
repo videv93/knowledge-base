@@ -110,6 +110,59 @@ def summarize_post_and_store(client: ClaudeClient, post: BlogPost) -> str:
         return "failed"
 
 
+def process_single_post(post_id: int) -> None:
+    """Summarize a single post by ID and store the result.
+
+    Idempotent — if the post already has a valid summary, logs INFO and returns
+    without re-calling the Claude API (avoids wasted API cost).
+
+    Args:
+        post_id: The raw_blog_posts.id to summarize.
+
+    Raises:
+        LookupError: if post_id is not found in raw_blog_posts.
+        SummarizationError: propagated from ClaudeClient on parse failure.
+        Exception: propagated from ClaudeClient on API failure (lets reprocess_entry update retry_count).
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT bp.id, bp.source_id, bp.title, bp.body, bp.url,
+                       bp.publication_date, bp.author_name, bp.created_at,
+                       ais.id AS summary_id
+                FROM raw_blog_posts bp
+                LEFT JOIN raw_ai_summaries ais ON bp.id = ais.post_id
+                WHERE bp.id = %s
+                """,
+                (post_id,),
+            )
+            row = cur.fetchone()
+
+    if row is None:
+        raise LookupError(f"Post {post_id} not found in raw_blog_posts")
+
+    if row[8] is not None:  # summary_id — already summarized
+        logger.info("Post %d already summarized — skipping", post_id)
+        return
+
+    post = BlogPost(
+        id=row[0],
+        source_id=row[1],
+        title=row[2],
+        body=row[3],
+        url=row[4],
+        publication_date=row[5],
+        author_name=row[6],
+        created_at=row[7],
+    )
+
+    client = ClaudeClient()
+    summary = client.summarize_post(title=post.title, body=post.body, post_id=post.id)
+    _store_summary(summary)
+    logger.info("process_single_post: summarized post %d: %s", post.id, post.title[:60])
+
+
 def process_all_unsummarized(max_concurrent: int | None = None) -> ProcessingResult:
     """Process all unsummarized posts with concurrency control.
 

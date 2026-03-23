@@ -42,6 +42,7 @@ class DeadLetterEntry:
     retry_count: int = 0
     created_at: Optional[datetime] = None
     last_retry_at: Optional[datetime] = None
+    resolved: bool = False
 
 
 @dataclass

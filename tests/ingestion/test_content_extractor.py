@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import psycopg2
+import pytest
 
 from src.common.models import BlogSource
 
@@ -153,3 +154,40 @@ class TestIngestPosts:
 
         # Should still record the failure, not crash
         assert metrics["failure_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# reingest_by_url (Story 6.1)
+# ---------------------------------------------------------------------------
+
+def _make_mock_conn(fetchone_row=None):
+    mock_conn = MagicMock()
+    mock_cursor = MagicMock()
+    mock_cursor.fetchone.return_value = fetchone_row
+    mock_conn.__enter__ = MagicMock(return_value=mock_conn)
+    mock_conn.__exit__ = MagicMock(return_value=False)
+    mock_conn.cursor.return_value.__enter__ = MagicMock(return_value=mock_cursor)
+    mock_conn.cursor.return_value.__exit__ = MagicMock(return_value=False)
+    return mock_conn, mock_cursor
+
+
+def test_reingest_by_url_marks_resolved_when_post_exists():
+    """reingest_by_url returns normally when post found — false positive case."""
+    mock_conn, _ = _make_mock_conn(fetchone_row=(42,))
+
+    with patch("src.ingestion.content_extractor.get_connection", return_value=mock_conn):
+        from src.ingestion.content_extractor import reingest_by_url
+
+        # Should not raise — post exists, ingestion was a false positive
+        reingest_by_url("https://example.com/post")
+
+
+def test_reingest_by_url_raises_lookup_error_when_post_missing():
+    """reingest_by_url raises LookupError when post not in raw_blog_posts."""
+    mock_conn, _ = _make_mock_conn(fetchone_row=None)
+
+    with patch("src.ingestion.content_extractor.get_connection", return_value=mock_conn):
+        from src.ingestion.content_extractor import reingest_by_url
+
+        with pytest.raises(LookupError, match="Post not found in raw_blog_posts"):
+            reingest_by_url("https://example.com/missing")
