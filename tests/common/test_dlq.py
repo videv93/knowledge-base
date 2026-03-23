@@ -185,7 +185,7 @@ def test_reprocess_entry_raises_on_unknown_stage():
 
 def test_reprocess_entry_marks_resolved_on_success():
     """reprocess_entry updates resolved=TRUE when dispatch succeeds."""
-    row = _entry_row(stage="summarization", post_reference="99")
+    row = _entry_row(failure_stage="summarization", post_reference="99")
     # Use separate mock_conn instances for _load_entry and the success UPDATE
     mock_conn, mock_cursor = _make_mock_conn(fetchone_row=row)
 

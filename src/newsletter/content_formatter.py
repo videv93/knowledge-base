@@ -183,3 +183,8 @@ def generate_newsletter_content(conn) -> str:
     except Exception:
         logger.error("Failed to generate newsletter content", exc_info=True)
         raise
+
+
+# Public API aliases — match names expected by src/newsletter/__init__.py
+fetch_newsletter_candidates = fetch_candidates
+format_newsletter_content = format_newsletter
