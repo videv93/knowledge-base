@@ -6,7 +6,7 @@ with normalized fields for database ingestion.
 
 import logging
 from calendar import timegm
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import feedparser
 
@@ -76,6 +76,30 @@ def parse_feed(source: BlogSource) -> list[dict]:
 
     logger.info("Parsed %d entries from %s", len(entries), source.name)
     return entries
+
+
+def filter_entries_by_date(entries: list[dict], max_age_days: int = 30) -> list[dict]:
+    """Filter parsed feed entries to only include posts within max_age_days.
+
+    Args:
+        entries: List of entry dicts from parse_feed().
+        max_age_days: Maximum age in days. Entries older than this are skipped.
+
+    Returns:
+        Filtered list. Entries with publication_date=None are INCLUDED (age unknown).
+    """
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    filtered = []
+    skipped = 0
+    for entry in entries:
+        pub_date = entry.get("publication_date")
+        if pub_date is not None and pub_date < cutoff:
+            skipped += 1
+            continue
+        filtered.append(entry)
+    if skipped > 0:
+        logger.info("Filtered out %d entries older than %d days", skipped, max_age_days)
+    return filtered
 
 
 def _extract_body(entry) -> str:
