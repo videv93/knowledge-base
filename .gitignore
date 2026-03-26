@@ -44,3 +44,6 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+.claude
+_bmad-output
+_bmad
