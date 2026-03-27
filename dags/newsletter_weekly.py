@@ -23,23 +23,24 @@ _DBT_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__
 
 def _format_newsletter(**kwargs):
     """Fetch ranked candidates, interleave by category, and format as markdown."""
+    from src.common.db import get_connection
     from src.newsletter.content_formatter import (
         fetch_newsletter_candidates,
         format_newsletter_content,
-        group_by_category,
     )
 
     ti = kwargs["ti"]
 
-    candidates = fetch_newsletter_candidates()
+    with get_connection() as conn:
+        candidates = fetch_newsletter_candidates(conn)
+
     if not candidates:
         logger.warning("No candidates found for this week's newsletter")
         ti.xcom_push(key="newsletter_content", value="")
         ti.xcom_push(key="candidate_count", value=0)
         return
 
-    ordered = group_by_category(candidates)
-    content = format_newsletter_content(ordered)
+    content = format_newsletter_content(candidates)
 
     ti.xcom_push(key="newsletter_content", value=content)
     ti.xcom_push(key="candidate_count", value=len(candidates))
@@ -50,46 +51,46 @@ def _format_newsletter(**kwargs):
     )
 
 
-def _push_to_beehiiv(**kwargs):
-    """Push formatted newsletter draft to Beehiiv API."""
+def _save_newsletter(**kwargs):
+    """Save formatted newsletter as a markdown file for manual Beehiiv upload."""
     from datetime import date
+    from pathlib import Path
 
     ti = kwargs["ti"]
     content = ti.xcom_pull(task_ids="format_newsletter", key="newsletter_content")
 
     if not content:
-        logger.info("No newsletter content to push — skipping Beehiiv draft creation")
-        ti.xcom_push(key="draft_id", value=None)
+        logger.info("No newsletter content — skipping file save")
+        ti.xcom_push(key="output_path", value=None)
         return
 
-    from src.newsletter.beehiiv_client import BeehiivClient
+    today = date.today().isoformat()
+    output_dir = Path("/opt/airflow/data/newsletters")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"newsletter_{today}.md"
+    output_path.write_text(content, encoding="utf-8")
 
-    title = f"Weekly Knowledge Digest - {date.today().isoformat()}"
-    client = BeehiivClient()
-    result = client.create_draft(title=title, content=content)
-
-    draft_id = result.get("id", "unknown")
-    ti.xcom_push(key="draft_id", value=draft_id)
-    ti.xcom_push(key="draft_title", value=title)
-    logger.info("Beehiiv draft created: id=%s, title=%s", draft_id, title)
+    ti.xcom_push(key="output_path", value=str(output_path))
+    ti.xcom_push(key="draft_title", value=f"Weekly Knowledge Digest - {today}")
+    logger.info("Newsletter saved to %s (%d chars)", output_path, len(content))
 
 
 def _notify_operator(**kwargs):
-    """Notify operator that a newsletter draft is ready for review."""
+    """Notify operator that a newsletter file is ready for review."""
     ti = kwargs["ti"]
-    draft_id = ti.xcom_pull(task_ids="push_to_beehiiv", key="draft_id")
-    draft_title = ti.xcom_pull(task_ids="push_to_beehiiv", key="draft_title")
+    output_path = ti.xcom_pull(task_ids="save_newsletter", key="output_path")
+    draft_title = ti.xcom_pull(task_ids="save_newsletter", key="draft_title")
     candidate_count = ti.xcom_pull(task_ids="format_newsletter", key="candidate_count") or 0
 
-    if not draft_id:
+    if not output_path:
         message = "No newsletter generated this week — no qualifying posts found."
     else:
         message = (
-            f"Newsletter draft ready for review!\n"
+            f"Newsletter ready for review!\n"
             f"Title: {draft_title}\n"
             f"Posts included: {candidate_count}\n"
-            f"Draft ID: {draft_id}\n"
-            f"Action: Review and approve in Beehiiv UI"
+            f"File: {output_path}\n"
+            f"Action: Copy content into Beehiiv UI and publish"
         )
 
     logger.info(message)
@@ -131,9 +132,9 @@ with DAG(
         python_callable=_format_newsletter,
     )
 
-    push_to_beehiiv = PythonOperator(
-        task_id="push_to_beehiiv",
-        python_callable=_push_to_beehiiv,
+    save_newsletter = PythonOperator(
+        task_id="save_newsletter",
+        python_callable=_save_newsletter,
     )
 
     notify_operator = PythonOperator(
@@ -144,6 +145,6 @@ with DAG(
     (
         refresh_newsletter_candidates
         >> format_newsletter
-        >> push_to_beehiiv
+        >> save_newsletter
         >> notify_operator
     )

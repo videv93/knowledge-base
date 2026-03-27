@@ -2,7 +2,8 @@
 
 This module handles all git operations for publishing generated vault notes
 to the vault repository. It clones/pulls the vault repo, writes generated
-notes to the generated/ directory, and commits/pushes changes via SSH.
+notes to the generated/ directory, and commits/pushes changes.
+Supports both SSH key and PAT (HTTPS) authentication.
 """
 
 import logging
@@ -10,15 +11,16 @@ import os
 import subprocess
 from pathlib import Path
 from typing import Dict, List
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
 
 class GitPublisher:
-    """Publishes generated vault notes to git repository via SSH.
+    """Publishes generated vault notes to git repository.
 
     This is the ONLY module that performs git operations on the vault repository.
-    All git commands are executed via subprocess for SSH key support.
+    Supports SSH key auth and HTTPS PAT auth.
     """
 
     def __init__(
@@ -26,29 +28,31 @@ class GitPublisher:
         repo_url: str,
         ssh_key_path: str,
         vault_local_path: str,
+        pat: str = "",
     ):
-        """Initialize GitPublisher.
-
-        Args:
-            repo_url: Git repository URL in SSH format (git@github.com:user/repo.git)
-            ssh_key_path: Path to SSH private key file for authentication
-            vault_local_path: Local directory path for vault repository clone
-        """
         self.repo_url = repo_url
         self.ssh_key_path = ssh_key_path
+        self.pat = pat
         self.vault_local_path = Path(vault_local_path)
+        self._use_pat = bool(pat) and repo_url.startswith("https://")
 
         logger.info(
             f"GitPublisher initialized: repo={repo_url}, "
-            f"local_path={vault_local_path}"
+            f"local_path={vault_local_path}, "
+            f"auth={'PAT' if self._use_pat else 'SSH'}"
         )
 
-    def _configure_git_ssh(self) -> None:
-        """Configure GIT_SSH_COMMAND environment variable to use SSH key.
+    def _auth_url(self) -> str:
+        """Return repo URL with PAT embedded for HTTPS auth."""
+        if not self._use_pat:
+            return self.repo_url
+        parsed = urlparse(self.repo_url)
+        return f"{parsed.scheme}://x-access-token:{self.pat}@{parsed.netloc}{parsed.path}"
 
-        Sets the SSH command that git will use for authentication,
-        pointing to the configured SSH private key.
-        """
+    def _configure_git_auth(self) -> None:
+        """Configure git authentication (SSH key or PAT)."""
+        if self._use_pat:
+            return
         os.environ['GIT_SSH_COMMAND'] = (
             f'ssh -i {self.ssh_key_path} '
             f'-o IdentitiesOnly=yes '
@@ -57,17 +61,13 @@ class GitPublisher:
         logger.debug(f"Configured GIT_SSH_COMMAND with key: {self.ssh_key_path}")
 
     def _clone_or_pull(self) -> None:
-        """Clone repository if it doesn't exist, otherwise pull latest changes.
-
-        First run: clones the repository to vault_local_path
-        Subsequent runs: pulls latest changes from origin/main
-        """
-        self._configure_git_ssh()
+        """Clone repository if it doesn't exist, otherwise pull latest changes."""
+        self._configure_git_auth()
 
         if not self.vault_local_path.exists():
             logger.info(f"Cloning vault repository to {self.vault_local_path}")
             result = subprocess.run(
-                ['git', 'clone', self.repo_url, str(self.vault_local_path)],
+                ['git', 'clone', self._auth_url(), str(self.vault_local_path)],
                 capture_output=True,
                 text=True,
                 check=True,
@@ -152,7 +152,23 @@ class GitPublisher:
             post_count: Number of posts generated
             source_count: Number of sources generated
         """
-        self._configure_git_ssh()
+        self._configure_git_auth()
+
+        # Set remote URL with auth for push (PAT needs to be in the URL)
+        if self._use_pat:
+            subprocess.run(
+                ['git', '-C', str(self.vault_local_path), 'remote', 'set-url', 'origin', self._auth_url()],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+
+        # Ensure git identity is configured for the repo
+        for key, val in [('user.email', 'pipeline@knowledge-base'), ('user.name', 'Knowledge Base Pipeline')]:
+            subprocess.run(
+                ['git', '-C', str(self.vault_local_path), 'config', key, val],
+                capture_output=True, text=True, check=True,
+            )
 
         # Stage changes in generated/ directory
         subprocess.run(
@@ -178,7 +194,7 @@ class GitPublisher:
         # Attempt to push
         try:
             subprocess.run(
-                ['git', '-C', str(self.vault_local_path), 'push', 'origin', 'main'],
+                ['git', '-C', str(self.vault_local_path), 'push', 'origin', 'HEAD'],
                 capture_output=True,
                 text=True,
                 check=True,

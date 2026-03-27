@@ -20,11 +20,16 @@ x-airflow-common:
     POSTGRES_USER: airflow
     POSTGRES_PASSWORD: airflow
     CLAUDE_API_KEY: ${CLAUDE_API_KEY:-}
+    CLAUDE_MODEL: ${CLAUDE_MODEL:-claude-sonnet-4-6}
+    OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    OPENROUTER_MODEL: ${OPENROUTER_MODEL:-anthropic/claude-sonnet-4}
+    OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-https://openrouter.ai/api/v1}
     OPENCLAW_BASE_URL: ${OPENCLAW_BASE_URL:-}
     BEEHIIV_API_KEY: ${BEEHIIV_API_KEY:-}
     BEEHIIV_PUBLICATION_ID: ${BEEHIIV_PUBLICATION_ID:-}
     VAULT_REPO_URL: ${VAULT_REPO_URL:-}
     VAULT_REPO_SSH_KEY_PATH: ${VAULT_REPO_SSH_KEY_PATH:-}
+    VAULT_REPO_PAT: ${VAULT_REPO_PAT:-}
     LOG_LEVEL: ${LOG_LEVEL:-INFO}
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
@@ -56,6 +61,8 @@ services:
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
       - ./docker/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+      - ./migrations:/opt/airflow/migrations
+      - ./data:/opt/airflow/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 10s
@@ -109,7 +116,7 @@ services:
 
   airflow-worker:
     <<: *airflow-common
-    command: celery worker
+    command: celery worker -H "celery@$${HOSTNAME}"
     healthcheck:
       test:
         - "CMD-SHELL"

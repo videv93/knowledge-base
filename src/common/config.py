@@ -37,11 +37,15 @@ POSTGRES_PASSWORD = os.environ["POSTGRES_PASSWORD"]
 # Optional — empty defaults are fine
 CLAUDE_API_KEY = os.environ.get("CLAUDE_API_KEY", "")
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-6")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY", "")
+OPENROUTER_MODEL = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4")
+OPENROUTER_BASE_URL = os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
 OPENCLAW_BASE_URL = os.environ.get("OPENCLAW_BASE_URL", "")
 BEEHIIV_API_KEY = os.environ.get("BEEHIIV_API_KEY", "")
 BEEHIIV_PUBLICATION_ID = os.environ.get("BEEHIIV_PUBLICATION_ID", "")
 VAULT_REPO_URL = os.environ.get("VAULT_REPO_URL", "")
 VAULT_REPO_SSH_KEY_PATH = os.environ.get("VAULT_REPO_SSH_KEY_PATH", "")
+VAULT_REPO_PAT = os.environ.get("VAULT_REPO_PAT", "")
 VAULT_LOCAL_PATH = os.environ.get("VAULT_LOCAL_PATH", "/tmp/vault-clone")
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
 

@@ -142,12 +142,19 @@ def _publish_vault(**kwargs):
     post_count = stats.get("posts_generated", 0) if stats else 0
     source_count = stats.get("sources_generated", 0) if stats else 0
 
+    # Build notes_by_type dict from the generated temp directory
+    notes_by_type = {}
+    for type_dir in tmp_dir.iterdir():
+        if type_dir.is_dir():
+            notes_by_type[type_dir.name] = list(type_dir.rglob("*.md"))
+
     publisher = GitPublisher(
         repo_url=config.VAULT_REPO_URL,
         ssh_key_path=config.VAULT_REPO_SSH_KEY_PATH,
         vault_local_path=config.VAULT_LOCAL_PATH,
+        pat=config.VAULT_REPO_PAT,
     )
-    publisher.publish(tmp_dir, run_date, post_count, source_count)
+    publisher.publish(notes_by_type, run_date, post_count, source_count)
 
 
 def _log_run_summary(**kwargs):
@@ -191,8 +198,8 @@ with DAG(
     dag_id="ingestion_daily",
     default_args=DEFAULT_ARGS,
     schedule="@daily",
-    start_date=datetime(2026, 1, 1),
-    catchup=True,
+    start_date=datetime(2026, 3, 27),
+    catchup=False,
     max_active_runs=1,
     tags=DEFAULT_TAGS + ["ingestion", "summarization", "dbt", "vault"],
     description="Daily RSS feed ingestion, summarization, dbt transformation, and vault generation pipeline",

@@ -1,12 +1,17 @@
-"""Claude API client for blog post summarization.
+"""AI client for blog post summarization.
 
-Single entry point for all AI summarization calls.
+Supports two backends:
+- OpenRouter (preferred) — uses OpenAI-compatible API via OPENROUTER_API_KEY
+- Anthropic direct — uses CLAUDE_API_KEY
+
+OpenRouter is tried first; falls back to Anthropic if OPENROUTER_API_KEY is not set.
 """
 
 import json
 import logging
 
 import anthropic
+import openai
 
 from src.common.models import AiSummary
 from src.common.retry import retry_with_backoff
@@ -27,35 +32,78 @@ class SummarizationError(Exception):
 
 
 class ClaudeClient:
-    """Client for Claude API blog post summarization."""
+    """Client for AI blog post summarization via OpenRouter or Anthropic."""
 
     def __init__(self, api_key: str | None = None, model: str | None = None):
         from src.common import config
 
-        self._api_key = api_key or config.CLAUDE_API_KEY
-        self._model = model or config.CLAUDE_MODEL
-        if not self._api_key:
-            raise RuntimeError(
-                "CLAUDE_API_KEY is required for summarization. "
-                "Set it in your .env file or environment."
+        self._backend = self._resolve_backend(api_key, config)
+        if self._backend == "openrouter":
+            self._openrouter_key = config.OPENROUTER_API_KEY
+            self._model = model or config.OPENROUTER_MODEL
+            self._openai_client = openai.OpenAI(
+                api_key=self._openrouter_key,
+                base_url=config.OPENROUTER_BASE_URL,
+                timeout=API_TIMEOUT,
             )
-        self._client = anthropic.Anthropic(
-            api_key=self._api_key,
-            timeout=API_TIMEOUT,
-        )
+            logger.info("Using OpenRouter backend with model %s", self._model)
+        else:
+            self._api_key = api_key or config.CLAUDE_API_KEY
+            self._model = model or config.CLAUDE_MODEL
+            if not self._api_key:
+                raise RuntimeError(
+                    "Either OPENROUTER_API_KEY or CLAUDE_API_KEY is required for summarization. "
+                    "Set one in your .env file or environment."
+                )
+            self._anthropic_client = anthropic.Anthropic(
+                api_key=self._api_key,
+                timeout=API_TIMEOUT,
+            )
+            logger.info("Using Anthropic backend with model %s", self._model)
+
+    @staticmethod
+    def _resolve_backend(api_key: str | None, config) -> str:
+        """Determine which backend to use. OpenRouter takes priority."""
+        if config.OPENROUTER_API_KEY:
+            return "openrouter"
+        if api_key or config.CLAUDE_API_KEY:
+            return "anthropic"
+        return "anthropic"  # will raise in __init__
 
     @retry_with_backoff(
         max_retries=3,
         base_delay=30,
-        exceptions=(anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APITimeoutError),
+        exceptions=(
+            anthropic.RateLimitError,
+            anthropic.InternalServerError,
+            anthropic.APITimeoutError,
+            openai.RateLimitError,
+            openai.InternalServerError,
+            openai.APITimeoutError,
+        ),
     )
-    def _call_api(self, prompt: str) -> anthropic.types.Message:
-        """Send a prompt to Claude and return the raw message response."""
-        return self._client.messages.create(
+    def _call_api(self, prompt: str):
+        """Send a prompt and return the raw response (backend-agnostic)."""
+        if self._backend == "openrouter":
+            return self._call_openrouter(prompt)
+        return self._call_anthropic(prompt)
+
+    def _call_anthropic(self, prompt: str) -> anthropic.types.Message:
+        return self._anthropic_client.messages.create(
             model=self._model,
             max_tokens=MAX_TOKENS,
             system=SUMMARIZATION_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": prompt}],
+        )
+
+    def _call_openrouter(self, prompt: str):
+        return self._openai_client.chat.completions.create(
+            model=self._model,
+            max_tokens=MAX_TOKENS,
+            messages=[
+                {"role": "system", "content": SUMMARIZATION_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
         )
 
     def summarize_post(self, title: str, body: str, post_id: int = 0) -> AiSummary:
@@ -71,13 +119,20 @@ class ClaudeClient:
 
         Raises:
             SummarizationError: If the response cannot be parsed or is invalid.
-            anthropic.BadRequestError: If the request is malformed (not retried).
         """
         prompt = SUMMARIZATION_USER_PROMPT_TEMPLATE.replace("{title}", title).replace("{body}", body)
 
         logger.info("Summarizing post: %s", title[:80])
-        message = self._call_api(prompt)
+        response = self._call_api(prompt)
 
+        if self._backend == "openrouter":
+            raw_response, response_text = self._extract_openrouter(response)
+        else:
+            raw_response, response_text = self._extract_anthropic(response)
+
+        return self._parse_response(response_text, raw_response, post_id)
+
+    def _extract_anthropic(self, message) -> tuple[dict, str]:
         raw_response = {
             "id": message.id,
             "model": message.model,
@@ -87,12 +142,24 @@ class ClaudeClient:
                 "output_tokens": message.usage.output_tokens,
             },
         }
-
         response_text = message.content[0].text
-        return self._parse_response(response_text, raw_response, post_id)
+        return raw_response, response_text
+
+    def _extract_openrouter(self, response) -> tuple[dict, str]:
+        raw_response = {
+            "id": response.id,
+            "model": response.model,
+            "content": [response.choices[0].message.content],
+            "usage": {
+                "input_tokens": response.usage.prompt_tokens if response.usage else 0,
+                "output_tokens": response.usage.completion_tokens if response.usage else 0,
+            },
+        }
+        response_text = response.choices[0].message.content
+        return raw_response, response_text
 
     def _parse_response(self, text: str, raw_response: dict, post_id: int) -> AiSummary:
-        """Parse Claude's JSON response into an AiSummary."""
+        """Parse AI JSON response into an AiSummary."""
         try:
             data = json.loads(text)
         except json.JSONDecodeError as e:
